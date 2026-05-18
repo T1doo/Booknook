@@ -1,0 +1,211 @@
+// =============================================================================
+//  BookNook · Prisma Schema
+//  说明: 与 database/01-schema.sql 一一对应,生成强类型 PrismaClient。
+//  生成方式: npx prisma generate
+//  注:本项目核心 DDL 保留在 SQL 脚本中,Prisma 只读模式使用,不做迁移管理。
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  super_admin
+  admin
+
+  @@map("user_role")
+}
+
+enum GenderType {
+  male
+  female
+  other
+
+  @@map("gender_type")
+}
+
+enum PurchaseStatus {
+  pending
+  paid
+  returned
+  received
+
+  @@map("purchase_status")
+}
+
+enum TransactionType {
+  income
+  expense
+
+  @@map("transaction_type")
+}
+
+model User {
+  id            BigInt     @id @default(autoincrement())
+  username      String     @unique @db.VarChar(32)
+  password_hash String     @db.Char(32)
+  salt          String     @db.Char(24)
+  real_name     String     @db.VarChar(32)
+  employee_no   String     @unique @db.VarChar(16)
+  gender        GenderType @default(other)
+  age           Int?       @db.SmallInt
+  role          UserRole   @default(admin)
+  is_active     Boolean    @default(true)
+  last_login_at DateTime?  @db.Timestamptz()
+  created_at    DateTime   @default(now()) @db.Timestamptz()
+  updated_at    DateTime   @default(now()) @db.Timestamptz()
+
+  purchase_orders  PurchaseOrder[]
+  sale_orders      SaleOrder[]
+  transactions     Transaction[]
+  operation_logs   OperationLog[]
+
+  @@map("users")
+}
+
+model Book {
+  id                   BigInt   @id @default(autoincrement())
+  isbn                 String   @unique @db.VarChar(20)
+  title                String   @db.VarChar(200)
+  publisher            String   @db.VarChar(100)
+  author               String   @db.VarChar(100)
+  retail_price         Decimal  @db.Decimal(10, 2)
+  stock                Int      @default(0)
+  low_stock_threshold  Int      @default(5)
+  cover_url            String?  @db.Text
+  category             String?  @db.VarChar(50)
+  created_at           DateTime @default(now()) @db.Timestamptz()
+  updated_at           DateTime @default(now()) @db.Timestamptz()
+
+  purchase_items   PurchaseOrderItem[]
+  sale_items       SaleOrderItem[]
+  inventory_alerts InventoryAlert[]
+
+  @@map("books")
+}
+
+model PurchaseOrder {
+  id           BigInt         @id @default(autoincrement())
+  order_no     String         @unique @db.VarChar(32)
+  created_by   BigInt
+  supplier     String?        @db.VarChar(100)
+  status       PurchaseStatus @default(pending)
+  total_amount Decimal        @default(0) @db.Decimal(12, 2)
+  remark       String?        @db.Text
+  created_at   DateTime       @default(now()) @db.Timestamptz()
+  paid_at      DateTime?      @db.Timestamptz()
+  returned_at  DateTime?      @db.Timestamptz()
+  received_at  DateTime?      @db.Timestamptz()
+  updated_at   DateTime       @default(now()) @db.Timestamptz()
+
+  user  User                @relation(fields: [created_by], references: [id])
+  items PurchaseOrderItem[]
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id             BigInt   @id @default(autoincrement())
+  order_id       BigInt
+  book_id        BigInt?
+  isbn           String   @db.VarChar(20)
+  title          String   @db.VarChar(200)
+  publisher      String   @db.VarChar(100)
+  author         String   @db.VarChar(100)
+  purchase_price Decimal  @db.Decimal(10, 2)
+  quantity       Int
+  retail_price   Decimal? @db.Decimal(10, 2)
+  subtotal       Decimal  @db.Decimal(12, 2)
+
+  order PurchaseOrder @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  book  Book?         @relation(fields: [book_id], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+model SaleOrder {
+  id            BigInt   @id @default(autoincrement())
+  order_no      String   @unique @db.VarChar(32)
+  created_by    BigInt
+  customer_note String?  @db.VarChar(100)
+  total_amount  Decimal  @db.Decimal(12, 2)
+  created_at    DateTime @default(now()) @db.Timestamptz()
+
+  user  User            @relation(fields: [created_by], references: [id])
+  items SaleOrderItem[]
+
+  @@map("sale_orders")
+}
+
+model SaleOrderItem {
+  id         BigInt  @id @default(autoincrement())
+  order_id   BigInt
+  book_id    BigInt
+  quantity   Int
+  unit_price Decimal @db.Decimal(10, 2)
+  subtotal   Decimal @db.Decimal(12, 2)
+
+  order SaleOrder @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  book  Book      @relation(fields: [book_id], references: [id])
+
+  @@map("sale_order_items")
+}
+
+model Transaction {
+  id            BigInt          @id @default(autoincrement())
+  type          TransactionType
+  amount        Decimal         @db.Decimal(12, 2)
+  related_table String?         @db.VarChar(32)
+  related_id    BigInt?
+  description   String          @db.VarChar(200)
+  created_by    BigInt?
+  created_at    DateTime        @default(now()) @db.Timestamptz()
+
+  user User? @relation(fields: [created_by], references: [id])
+
+  @@map("transactions")
+}
+
+model OperationLog {
+  id          BigInt   @id @default(autoincrement())
+  user_id     BigInt?
+  action      String   @db.VarChar(32)
+  resource    String   @db.VarChar(32)
+  resource_id String?  @db.VarChar(64)
+  ip          String?  @db.VarChar(45)
+  user_agent  String?  @db.Text
+  payload     Json?    @db.JsonB
+  created_at  DateTime @default(now()) @db.Timestamptz()
+
+  user User? @relation(fields: [user_id], references: [id])
+
+  @@map("operation_logs")
+}
+
+model InventoryAlert {
+  id              BigInt    @id @default(autoincrement())
+  book_id         BigInt
+  threshold       Int
+  current_stock   Int
+  last_alerted_at DateTime  @default(now()) @db.Timestamptz()
+  resolved        Boolean   @default(false)
+  resolved_at     DateTime? @db.Timestamptz()
+
+  book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
+
+  @@map("inventory_alerts")
+}
+
+model I18nDict {
+  key        String   @id @db.VarChar(64)
+  zh         String   @db.Text
+  en         String   @db.Text
+  updated_at DateTime @default(now()) @db.Timestamptz()
+
+  @@map("i18n_dict")
+}

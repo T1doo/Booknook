@@ -1,0 +1,108 @@
+{
+  "brand": {
+    "name": "暖书阁",
+    "name_en": "BookNook",
+    "tagline": "一家有温度的图书销售管理系统"
+  },
+  "nav": {
+    "dashboard": "仪表盘",
+    "books": "库存图书",
+    "purchases": "进货管理",
+    "sales": "销售收银",
+    "transactions": "财务账单",
+    "reports": "报表导出",
+    "alerts": "库存预警",
+    "users": "用户管理",
+    "logs": "操作日志",
+    "profile": "我的信息"
+  },
+  "auth": {
+    "login_title": "登录",
+    "login_subtitle": "欢迎回到暖书阁,继续您的图书管理工作",
+    "username": "用户名",
+    "password": "密码",
+    "remember": "记住我",
+    "submit": "登录",
+    "submitting": "登录中…",
+    "logout": "退出登录",
+    "demo_accounts": "演示账号"
+  },
+  "common": {
+    "search": "搜索",
+    "search_placeholder": "搜索书名、ISBN、作者…",
+    "create": "新建",
+    "edit": "编辑",
+    "delete": "删除",
+    "cancel": "取消",
+    "confirm": "确认",
+    "save": "保存",
+    "export": "导出",
+    "loading": "加载中…",
+    "empty": "暂无数据",
+    "total_records": "共 {n} 条",
+    "operations": "操作",
+    "details": "详情",
+    "all": "全部",
+    "success": "操作成功",
+    "yes": "是",
+    "no": "否",
+    "back": "返回",
+    "settings": "设置",
+    "language": "语言",
+    "theme": "主题",
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统"
+  },
+  "book": {
+    "isbn": "ISBN",
+    "title": "书名",
+    "author": "作者",
+    "publisher": "出版社",
+    "retail_price": "零售价",
+    "stock": "库存",
+    "category": "分类",
+    "low_threshold": "预警阈值",
+    "created_at": "添加时间",
+    "search_field": {
+      "all": "全部字段",
+      "id": "编号",
+      "isbn": "ISBN",
+      "title": "书名",
+      "author": "作者",
+      "publisher": "出版社"
+    }
+  },
+  "dashboard": {
+    "today_sales": "今日销售",
+    "month_sales": "本月销售",
+    "total_stock": "总库存",
+    "pending_purchase": "待付进货",
+    "sales_trend": "近 30 天销售趋势",
+    "top_books": "畅销榜 Top 10",
+    "finance_monthly": "月度收支",
+    "category_pie": "库存分类占比",
+    "alerts": "库存预警"
+  },
+  "purchase": {
+    "status": {
+      "pending": "未付款",
+      "paid": "已付款",
+      "returned": "已退货",
+      "received": "已入库"
+    },
+    "create": "创建进货单",
+    "pay": "确认付款",
+    "return_": "退货",
+    "receive": "入库"
+  },
+  "sale": {
+    "cart": "购物车",
+    "checkout": "结账",
+    "amount": "金额"
+  },
+  "transaction": {
+    "income": "收入",
+    "expense": "支出"
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "brand": {
+    "name": "BookNook",
+    "name_en": "BookNook",
+    "tagline": "A warm-hearted bookstore management system"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "books": "Inventory",
+    "purchases": "Purchases",
+    "sales": "Sales",
+    "transactions": "Transactions",
+    "reports": "Reports",
+    "alerts": "Stock Alerts",
+    "users": "Users",
+    "logs": "Audit Logs",
+    "profile": "My Profile"
+  },
+  "auth": {
+    "login_title": "Sign in",
+    "login_subtitle": "Welcome back to BookNook",
+    "username": "Username",
+    "password": "Password",
+    "remember": "Remember me",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "logout": "Sign out",
+    "demo_accounts": "Demo accounts"
+  },
+  "common": {
+    "search": "Search",
+    "search_placeholder": "Search title, ISBN, author…",
+    "create": "New",
+    "edit": "Edit",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "export": "Export",
+    "loading": "Loading…",
+    "empty": "Nothing here yet",
+    "total_records": "{n} records",
+    "operations": "Actions",
+    "details": "Details",
+    "all": "All",
+    "success": "Success",
+    "yes": "Yes",
+    "no": "No",
+    "back": "Back",
+    "settings": "Settings",
+    "language": "Language",
+    "theme": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "book": {
+    "isbn": "ISBN",
+    "title": "Title",
+    "author": "Author",
+    "publisher": "Publisher",
+    "retail_price": "Retail price",
+    "stock": "Stock",
+    "category": "Category",
+    "low_threshold": "Low-stock threshold",
+    "created_at": "Added",
+    "search_field": {
+      "all": "All fields",
+      "id": "ID",
+      "isbn": "ISBN",
+      "title": "Title",
+      "author": "Author",
+      "publisher": "Publisher"
+    }
+  },
+  "dashboard": {
+    "today_sales": "Today's sales",
+    "month_sales": "Monthly sales",
+    "total_stock": "Total stock",
+    "pending_purchase": "Pending purchases",
+    "sales_trend": "30-day sales trend",
+    "top_books": "Top 10 sellers",
+    "finance_monthly": "Monthly finance",
+    "category_pie": "Stock by category",
+    "alerts": "Stock alerts"
+  },
+  "purchase": {
+    "status": {
+      "pending": "Pending",
+      "paid":    "Paid",
+      "returned":"Returned",
+      "received":"Received"
+    },
+    "create": "New purchase order",
+    "pay": "Pay",
+    "return_": "Return",
+    "receive": "Receive"
+  },
+  "sale": {
+    "cart": "Cart",
+    "checkout": "Checkout",
+    "amount": "Amount"
+  },
+  "transaction": {
+    "income": "Income",
+    "expense": "Expense"
+  }
+}

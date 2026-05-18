@@ -1,0 +1,164 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================================
+   暖书店 (BookNook) 主题
+   - 米色 + 琥珀色, 偏文化感
+   - 浅色为主, 暗色保留暖调
+   ========================================================================= */
+
+@layer base {
+  :root {
+    --background:                40 45% 96%;    /* #FAF5EB warm cream */
+    --foreground:                25 50% 14%;    /* #3B2614 dark cocoa */
+
+    --card:                      40 50% 99%;    /* #FFFCF5 paper */
+    --card-foreground:           25 50% 14%;
+
+    --popover:                   40 50% 99%;
+    --popover-foreground:        25 50% 14%;
+
+    --primary:                   29 75% 33%;    /* #9C5318 amber-700-ish */
+    --primary-foreground:        40 50% 98%;
+
+    --secondary:                 36 35% 90%;    /* #ECDFCB soft tan */
+    --secondary-foreground:      25 55% 18%;
+
+    --muted:                     36 28% 92%;
+    --muted-foreground:          25 18% 38%;
+
+    --accent:                    38 92% 50%;    /* #F59E0B amber-500 */
+    --accent-foreground:         25 60% 14%;
+
+    --destructive:               358 70% 47%;
+    --destructive-foreground:    40 50% 98%;
+
+    --border:                    34 25% 84%;
+    --input:                     34 25% 88%;
+    --ring:                      29 75% 45%;
+
+    --radius:                    0.625rem;
+
+    --sidebar:                   30 35% 16%;    /* deep coffee */
+    --sidebar-foreground:        40 30% 90%;
+    --sidebar-accent:            38 92% 50%;
+    --sidebar-accent-foreground: 25 60% 14%;
+    --sidebar-border:            30 25% 22%;
+
+    --chart-1: 29 75% 45%;   /* amber */
+    --chart-2: 162 50% 40%;  /* green-teal */
+    --chart-3: 220 50% 50%;  /* steel blue */
+    --chart-4: 5 70% 55%;    /* warm red */
+    --chart-5: 270 35% 50%;  /* dusty violet */
+  }
+
+  .dark {
+    --background:                25 28% 8%;
+    --foreground:                40 30% 90%;
+
+    --card:                      25 22% 12%;
+    --card-foreground:           40 30% 90%;
+
+    --popover:                   25 22% 12%;
+    --popover-foreground:        40 30% 90%;
+
+    --primary:                   36 80% 60%;
+    --primary-foreground:        25 60% 14%;
+
+    --secondary:                 25 15% 20%;
+    --secondary-foreground:      40 30% 90%;
+
+    --muted:                     25 15% 18%;
+    --muted-foreground:          40 20% 70%;
+
+    --accent:                    38 92% 55%;
+    --accent-foreground:         25 60% 14%;
+
+    --destructive:               358 65% 55%;
+    --destructive-foreground:    40 30% 95%;
+
+    --border:                    25 15% 22%;
+    --input:                     25 15% 22%;
+    --ring:                      36 80% 60%;
+
+    --sidebar:                   25 30% 10%;
+    --sidebar-foreground:        40 25% 88%;
+    --sidebar-accent:            38 80% 55%;
+    --sidebar-accent-foreground: 25 60% 14%;
+    --sidebar-border:            25 20% 16%;
+
+    --chart-1: 36 85% 60%;
+    --chart-2: 162 55% 50%;
+    --chart-3: 220 60% 60%;
+    --chart-4: 5 75% 65%;
+    --chart-5: 270 45% 65%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html, body {
+    @apply h-full;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased font-sans;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
+    text-rendering: optimizeLegibility;
+  }
+
+  /* 滚动条美化 */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/40;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  /* 焦点环 */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-sm border border-border/60;
+  }
+  /* 衬线大标题 */
+  .display-serif {
+    @apply font-serif tracking-tight;
+    font-weight: 700;
+  }
+  /* 数字单宽 (财务/ISBN) */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
