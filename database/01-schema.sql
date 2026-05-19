@@ -54,11 +54,15 @@ DROP TYPE  IF EXISTS gender_type        CASCADE;
 DROP TYPE  IF EXISTS purchase_status    CASCADE;
 DROP TYPE  IF EXISTS transaction_type   CASCADE;
 
-DROP FUNCTION IF EXISTS gen_order_no(prefix TEXT)           CASCADE;
-DROP FUNCTION IF EXISTS fn_sales_after_insert()             CASCADE;
-DROP FUNCTION IF EXISTS fn_purchase_after_receive()         CASCADE;
-DROP FUNCTION IF EXISTS fn_audit_log()                      CASCADE;
-DROP FUNCTION IF EXISTS fn_books_low_stock_check()          CASCADE;
+DROP FUNCTION IF EXISTS gen_order_no(prefix TEXT)              CASCADE;
+DROP FUNCTION IF EXISTS fn_sales_after_insert()                CASCADE;
+DROP FUNCTION IF EXISTS fn_sale_order_after_insert()           CASCADE;
+DROP FUNCTION IF EXISTS fn_sale_items_after_insert_stmt()      CASCADE;
+DROP FUNCTION IF EXISTS fn_purchase_status_change()            CASCADE;
+DROP FUNCTION IF EXISTS fn_purchase_after_receive()            CASCADE;
+DROP FUNCTION IF EXISTS fn_audit_log()                         CASCADE;
+DROP FUNCTION IF EXISTS fn_books_low_stock_check(BIGINT)       CASCADE;
+DROP FUNCTION IF EXISTS fn_set_updated_at()                    CASCADE;
 
 -- ---------------------------------------------------------------------------
 -- 1. 枚举类型
@@ -127,12 +131,13 @@ COMMENT ON TABLE  public.books              IS 'PPT-2 库存书籍管理';
 COMMENT ON COLUMN public.books.low_stock_threshold
     IS '库存预警阈值,低于此值触发 inventory_alerts';
 
-CREATE UNIQUE INDEX idx_books_isbn  ON public.books (isbn);
+-- F1: books.isbn 已有 UNIQUE 隐式索引, 此处不再重复建 idx_books_isbn
 -- ILIKE '%xx%' 加速;书名/作者/出版社三元组索引
 CREATE INDEX idx_books_title_trgm    ON public.books USING gin (title     gin_trgm_ops);
 CREATE INDEX idx_books_author_trgm   ON public.books USING gin (author    gin_trgm_ops);
 CREATE INDEX idx_books_publisher_trgm ON public.books USING gin (publisher gin_trgm_ops);
-CREATE INDEX idx_books_low_stock     ON public.books (stock) WHERE stock <= low_stock_threshold;
+-- F4: 原 idx_books_low_stock 使用 WHERE stock <= low_stock_threshold (跨列), 不是 IMMUTABLE,
+--     带来不必要的索引维护成本; v_low_stock_books 视图已经高效查询低库存, 这里删除该索引.
 
 -- ---------------------------------------------------------------------------
 -- 4. 进货单 / 进货明细 (purchase_orders / purchase_order_items)
@@ -157,6 +162,9 @@ CREATE TABLE public.purchase_orders (
 COMMENT ON TABLE public.purchase_orders IS 'PPT-5/6/7/8 进货单(四态: pending/paid/returned/received)';
 
 CREATE INDEX idx_po_status_time ON public.purchase_orders (status, created_at DESC);
+-- F3: 独立的 created_at 索引, 供 v_user_activity 的 LEFT JOIN 过滤使用
+--     (idx_po_status_time 的前导列是 status, 单独按 created_at 范围扫不会走它)
+CREATE INDEX idx_po_created_at  ON public.purchase_orders (created_at DESC);
 CREATE INDEX idx_po_created_by  ON public.purchase_orders (created_by);
 
 -- 明细表:book_id 可空, 因为新书首次进货时 books 中可能尚无记录,
@@ -223,11 +231,14 @@ CREATE TABLE public.transactions (
     id             BIGSERIAL PRIMARY KEY,
     type           transaction_type NOT NULL,
     amount         NUMERIC(12,2)    NOT NULL CHECK (amount > 0),
-    related_table  VARCHAR(32),                       -- 'purchase_orders' / 'sale_orders'
+    related_table  VARCHAR(32)      CHECK (related_table IN ('purchase_orders', 'sale_orders')),
     related_id     BIGINT,                            -- 对应订单 id
     description    VARCHAR(200)     NOT NULL,
     created_by     BIGINT           REFERENCES public.users(id),
-    created_at     TIMESTAMPTZ      NOT NULL DEFAULT now()
+    created_at     TIMESTAMPTZ      NOT NULL DEFAULT now(),
+    -- F2: 多态外键不能由 PG 强约束, 这里至少限制 related_table 取值范围,
+    --     杜绝触发器/未来代码写入非法的 related_table 字符串
+    CHECK (related_id IS NULL OR related_table IS NOT NULL)
 );
 
 COMMENT ON TABLE public.transactions IS 'PPT-10 财务管理 · 不可篡改的流水账';
@@ -277,6 +288,10 @@ COMMENT ON TABLE public.inventory_alerts IS '加分项: 库存低于阈值时自
 CREATE INDEX idx_alerts_open ON public.inventory_alerts (resolved, last_alerted_at DESC)
     WHERE resolved = FALSE;
 
+-- 部分唯一索引: 同一本书最多只能有一条未解决预警, 防止并发触发器写出双条
+CREATE UNIQUE INDEX uq_alerts_book_open ON public.inventory_alerts (book_id)
+    WHERE resolved = FALSE;
+
 -- ---------------------------------------------------------------------------
 -- 9. 国际化字典 (i18n_dict)  · 加分项
 -- ---------------------------------------------------------------------------
@@ -315,20 +330,36 @@ CREATE TRIGGER trg_po_updated_at
     FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
 
 -- ----------------------------------------------------------------------------
--- 9.1 订单号生成函数
+-- 9.1 订单号生成函数 (并发安全)
 --     形如: PO-20260517-0001 / SO-20260517-0001
+--
+--     原方案 COUNT(*) + 1 在并发下两个事务可读到相同 count,
+--     导致 UNIQUE 冲突 + 用户看到 500.
+--     这里用 pg_advisory_xact_lock 把 (prefix, today) 串行化:
+--       - 锁键为 hashtextextended(prefix || today),
+--       - 事务级锁, 事务结束自动释放,
+--       - 同一天同种订单的 gen_order_no 调用串行执行,
+--       - 不影响不同日期 / 不同 prefix 的并发性能.
+--     同时改用 MAX(seq) + 1 而非 COUNT(*) + 1, 即便有删除也不会冲突.
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION gen_order_no(prefix TEXT) RETURNS TEXT AS $$
 DECLARE
-    today TEXT := to_char(now(), 'YYYYMMDD');
-    seq   INT;
+    today    TEXT   := to_char(now(), 'YYYYMMDD');
+    seq      INT;
+    lock_key BIGINT := hashtextextended(prefix || today, 0);
 BEGIN
+    PERFORM pg_advisory_xact_lock(lock_key);
+
     IF prefix = 'PO' THEN
-        SELECT COUNT(*) + 1 INTO seq
+        SELECT COALESCE(MAX(
+            NULLIF(regexp_replace(order_no, '^PO-' || today || '-', ''), '')::INT
+        ), 0) + 1 INTO seq
           FROM public.purchase_orders
          WHERE order_no LIKE 'PO-' || today || '-%';
     ELSE
-        SELECT COUNT(*) + 1 INTO seq
+        SELECT COALESCE(MAX(
+            NULLIF(regexp_replace(order_no, '^SO-' || today || '-', ''), '')::INT
+        ), 0) + 1 INTO seq
           FROM public.sale_orders
          WHERE order_no LIKE 'SO-' || today || '-%';
     END IF;
@@ -363,32 +394,56 @@ CREATE TRIGGER trg_sale_items_after_insert
     AFTER INSERT ON public.sale_order_items
     FOR EACH ROW EXECUTE FUNCTION fn_sales_after_insert();
 
--- 销售单本身插入后,写入一条 income 流水
-CREATE OR REPLACE FUNCTION fn_sale_order_after_insert() RETURNS TRIGGER AS $$
+-- 销售明细插入后 (statement-level), 用本次 statement 涉及的 sale_order 实际
+-- SUM(items.subtotal) 写入 income 流水. 这样流水金额 == 明细 SUM 是 DB 强制保证的,
+-- 不依赖 controller 传入的 total_amount (杜绝前端篡改 / 浮点误差导致流水失真).
+--
+-- 注意: 该触发器要求 controller 用 *batch* INSERT 把同一 sale_order 的所有 items
+--      放进同一个 statement (REFERENCING NEW TABLE 仅含本 statement 的新行).
+CREATE OR REPLACE FUNCTION fn_sale_items_after_insert_stmt() RETURNS TRIGGER AS $$
 BEGIN
     INSERT INTO public.transactions
         (type, amount, related_table, related_id, description, created_by)
-    VALUES
-        ('income', NEW.total_amount, 'sale_orders', NEW.id,
-         '销售单 ' || NEW.order_no, NEW.created_by);
-    RETURN NEW;
+    SELECT
+        'income',
+        SUM(soi.subtotal),
+        'sale_orders',
+        so.id,
+        '销售单 ' || so.order_no,
+        so.created_by
+    FROM (SELECT DISTINCT order_id FROM new_items) ni
+    JOIN public.sale_orders      so  ON so.id      = ni.order_id
+    JOIN public.sale_order_items soi ON soi.order_id = so.id
+    WHERE NOT EXISTS (
+        SELECT 1 FROM public.transactions tx
+        WHERE tx.related_table = 'sale_orders' AND tx.related_id = so.id
+    )
+    GROUP BY so.id, so.order_no, so.created_by
+    HAVING SUM(soi.subtotal) > 0;
+    RETURN NULL;
 END
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_sale_orders_after_insert
-    AFTER INSERT ON public.sale_orders
-    FOR EACH ROW EXECUTE FUNCTION fn_sale_order_after_insert();
+CREATE TRIGGER trg_sale_items_after_insert_stmt
+    AFTER INSERT ON public.sale_order_items
+    REFERENCING NEW TABLE AS new_items
+    FOR EACH STATEMENT EXECUTE FUNCTION fn_sale_items_after_insert_stmt();
 
 -- ----------------------------------------------------------------------------
 -- 9.3 进货单状态机:
 --      pending -> paid    : 写一条 expense 流水
 --      paid    -> received: 入库 (新增/累加 books.stock)
 --      pending -> returned: 仅状态变化
+--
+--   状态机硬约束 (B2): 任何不在上述合法转移内的状态变更都 RAISE EXCEPTION.
+--   入库元数据一致性 (B4): book_id 为空且 ISBN 命中老书时, 比较 title/author/publisher,
+--     不一致即拒绝, 防止操作员误把老书录入为新书时静默覆盖 books 元数据.
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION fn_purchase_status_change() RETURNS TRIGGER AS $$
 DECLARE
-    item       RECORD;
-    target_id  BIGINT;
+    item     RECORD;
+    existing RECORD;
+    target_id BIGINT;
 BEGIN
     -- 付款: 写支出流水
     IF OLD.status = 'pending' AND NEW.status = 'paid' THEN
@@ -398,23 +453,26 @@ BEGIN
         VALUES
             ('expense', NEW.total_amount, 'purchase_orders', NEW.id,
              '进货单 ' || NEW.order_no || ' 付款', NEW.created_by);
-    END IF;
 
     -- 退货: 仅打标记
-    IF OLD.status = 'pending' AND NEW.status = 'returned' THEN
+    ELSIF OLD.status = 'pending' AND NEW.status = 'returned' THEN
         NEW.returned_at := now();
-    END IF;
 
-    -- 入库: 已付款的书到货后,合并/新增到 books
-    IF OLD.status = 'paid' AND NEW.status = 'received' THEN
+    -- 入库: 已付款的书到货后, 合并/新增到 books
+    ELSIF OLD.status = 'paid' AND NEW.status = 'received' THEN
         NEW.received_at := now();
         FOR item IN
             SELECT * FROM public.purchase_order_items WHERE order_id = NEW.id
         LOOP
             IF item.book_id IS NULL THEN
-                -- 新书 -> 新增到 books;若 ISBN 已存在则改为 +stock
-                SELECT id INTO target_id FROM public.books WHERE isbn = item.isbn;
-                IF target_id IS NULL THEN
+                -- 检查 ISBN 是否已存在
+                SELECT id, title, author, publisher
+                  INTO existing
+                  FROM public.books
+                 WHERE isbn = item.isbn;
+
+                IF existing.id IS NULL THEN
+                    -- 新书: 真正插入
                     INSERT INTO public.books
                         (isbn, title, publisher, author, retail_price, stock)
                     VALUES
@@ -423,10 +481,22 @@ BEGIN
                          item.quantity)
                     RETURNING id INTO target_id;
                 ELSE
+                    -- ISBN 已存在: 强制元数据一致性, 防止"老书改名"事故
+                    IF existing.title     <> item.title
+                       OR existing.author    <> item.author
+                       OR existing.publisher <> item.publisher THEN
+                        RAISE EXCEPTION
+                            'ISBN % 已存在但元数据不一致: 库内《%》(%, %) vs 录入《%》(%, %)',
+                            item.isbn,
+                            existing.title, existing.author, existing.publisher,
+                            item.title,     item.author,     item.publisher
+                            USING HINT = '请改用已有书的 book_id, 或核对录入的书名/作者/出版社';
+                    END IF;
                     UPDATE public.books
                        SET stock = stock + item.quantity,
                            retail_price = COALESCE(item.retail_price, retail_price)
-                     WHERE id = target_id;
+                     WHERE id = existing.id;
+                    target_id := existing.id;
                 END IF;
                 -- 回填 book_id
                 UPDATE public.purchase_order_items
@@ -440,6 +510,11 @@ BEGIN
                  WHERE id = item.book_id;
             END IF;
         END LOOP;
+
+    -- 任何其他转移均非法
+    ELSE
+        RAISE EXCEPTION '非法的进货单状态变更: % -> %', OLD.status, NEW.status
+            USING HINT = '合法转移仅有 pending->paid / pending->returned / paid->received';
     END IF;
 
     RETURN NEW;

@@ -34,7 +34,13 @@ coverage/
 .cache/
 .eslintcache
 .turbo/
-.tsbuildinfo
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# playwright / 截图临时缓存
+.playwright-mcp/
+playwright-report/
+test-results/
 
 # Prisma
 backend/prisma/migrations/*.local.sql

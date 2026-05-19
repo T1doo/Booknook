@@ -120,6 +120,8 @@ model PurchaseOrderItem {
   purchase_price Decimal  @db.Decimal(10, 2)
   quantity       Int
   retail_price   Decimal? @db.Decimal(10, 2)
+  /// READ-ONLY: SQL 中是 GENERATED ALWAYS AS (purchase_price * quantity) STORED, 不能用 Prisma 写入.
+  /// 仅可通过 controller 中 raw SQL 的 INSERT (列不出现) 触发自动计算.
   subtotal       Decimal  @db.Decimal(12, 2)
 
   order PurchaseOrder @relation(fields: [order_id], references: [id], onDelete: Cascade)
@@ -148,6 +150,7 @@ model SaleOrderItem {
   book_id    BigInt
   quantity   Int
   unit_price Decimal @db.Decimal(10, 2)
+  /// READ-ONLY: SQL 中是 GENERATED ALWAYS AS (unit_price * quantity) STORED, 不能用 Prisma 写入.
   subtotal   Decimal @db.Decimal(12, 2)
 
   order SaleOrder @relation(fields: [order_id], references: [id], onDelete: Cascade)

@@ -10,8 +10,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/layout/page-header';
 import { downloadFile } from '@/lib/api';
+import { toCnRangeIso } from '@/lib/utils';
+import { useT } from '@/i18n';
 
 export default function ReportsPage() {
+  const t = useT();
   const [from, setFrom] = useState('');
   const [to, setTo]     = useState('');
   const [busy, setBusy] = useState<string | null>(null);
@@ -20,12 +23,14 @@ export default function ReportsPage() {
     setBusy(key);
     try {
       const qs = new URLSearchParams();
-      if (from) qs.set('from', new Date(from).toISOString());
-      if (to)   qs.set('to',   new Date(to + 'T23:59:59').toISOString());
+      // D4: 用 toCnRangeIso 把"本地一整天"完整覆盖, 避免跨日时区漏数据
+      const range = toCnRangeIso(from, to);
+      if (range.from) qs.set('from', range.from);
+      if (range.to)   qs.set('to',   range.to);
       await downloadFile(`${path}?${qs}`, filename);
-      toast.success('已开始下载');
+      toast.success(t('report.download_start'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '下载失败');
+      toast.error(err instanceof Error ? err.message : t('report.download_failed'));
     } finally {
       setBusy(null);
     }
@@ -35,53 +40,53 @@ export default function ReportsPage() {
 
   return (
     <div>
-      <PageHeader title="报表导出" description="按日期范围导出 Excel / PDF 报表" />
+      <PageHeader title={t('report.title_page')} description={t('report.desc_page')} />
 
       <Card className="mb-6">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">日期筛选</CardTitle>
-          <CardDescription>留空表示导出全部数据</CardDescription>
+          <CardTitle className="text-base">{t('report.filter_title')}</CardTitle>
+          <CardDescription>{t('report.filter_desc')}</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="space-y-1.5">
-            <Label htmlFor="r-from">起始日期</Label>
+            <Label htmlFor="r-from">{t('common.from_date')}</Label>
             <Input id="r-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="r-to">截止日期</Label>
+            <Label htmlFor="r-to">{t('common.to_date')}</Label>
             <Input id="r-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <div className="flex items-end">
-            <Button variant="outline" onClick={() => { setFrom(''); setTo(''); }}>清空</Button>
+            <Button variant="outline" onClick={() => { setFrom(''); setTo(''); }}>{t('common.clear')}</Button>
           </div>
         </CardContent>
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <ReportCard
-          icon={ShoppingCart} title="销售报表"
-          desc="所有销售单的明细 (XLSX)"
+          icon={ShoppingCart} title={t('report.sales_title')}
+          desc={t('report.sales_desc')}
           color="emerald"
           busy={busy === 'sales'}
           onClick={() => dl('sales', '/reports/sales.xlsx', `sales-${stamp}.xlsx`)}
         />
         <ReportCard
-          icon={ShoppingBag} title="进货报表"
-          desc="所有进货单的明细 (XLSX)"
+          icon={ShoppingBag} title={t('report.purchase_title')}
+          desc={t('report.purchase_desc')}
           color="amber"
           busy={busy === 'purchases'}
           onClick={() => dl('purchases', '/reports/purchases.xlsx', `purchases-${stamp}.xlsx`)}
         />
         <ReportCard
-          icon={Wallet} title="财务流水 (XLSX)"
-          desc="所有收入支出明细"
+          icon={Wallet} title={t('report.finance_xlsx_title')}
+          desc={t('report.finance_xlsx_desc')}
           color="sky"
           busy={busy === 'finance-xlsx'}
           onClick={() => dl('finance-xlsx', '/reports/finance.xlsx', `finance-${stamp}.xlsx`)}
         />
         <ReportCard
-          icon={FileText} title="财务流水 (PDF)"
-          desc="可直接打印的精美 PDF"
+          icon={FileText} title={t('report.finance_pdf_title')}
+          desc={t('report.finance_pdf_desc')}
           color="rose"
           busy={busy === 'finance-pdf'}
           onClick={() => dl('finance-pdf', '/reports/finance.pdf', `finance-${stamp}.pdf`)}

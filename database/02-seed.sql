@@ -119,15 +119,29 @@ UPDATE public.purchase_orders SET status = 'paid'     WHERE id = 1;
 UPDATE public.purchase_orders SET status = 'received' WHERE id = 1;
 
 -- 销售单 1
+-- total_amount 由子查询动态计算, 与下方 items 的 SUM(unit_price * quantity) 严格一致,
+-- 避免硬编码与实际明细不一致导致的财务对账失败 / Dashboard 数字漂移。
 INSERT INTO public.sale_orders (order_no, created_by, customer_note, total_amount, created_at)
-VALUES (gen_order_no('SO'), 2, '老顾客', 256.40, now() - INTERVAL '3 day');
+VALUES (
+    gen_order_no('SO'), 2, '老顾客',
+    (SELECT COALESCE(SUM(retail_price * 2), 0)
+       FROM public.books
+      WHERE isbn IN ('9787020002207', '9787544285186')),
+    now() - INTERVAL '3 day'
+);
 
 INSERT INTO public.sale_order_items (order_id, book_id, quantity, unit_price)
 SELECT 1, b.id, 2, b.retail_price FROM public.books b WHERE b.isbn IN ('9787020002207', '9787544285186');
 
 -- 销售单 2
 INSERT INTO public.sale_orders (order_no, created_by, customer_note, total_amount, created_at)
-VALUES (gen_order_no('SO'), 3, NULL, 197.00, now() - INTERVAL '1 day');
+VALUES (
+    gen_order_no('SO'), 3, NULL,
+    (SELECT COALESCE(SUM(retail_price * 1), 0)
+       FROM public.books
+      WHERE isbn IN ('9787121362248', '9787115521477')),
+    now() - INTERVAL '1 day'
+);
 
 INSERT INTO public.sale_order_items (order_id, book_id, quantity, unit_price)
 SELECT 2, b.id, 1, b.retail_price FROM public.books b WHERE b.isbn IN ('9787121362248', '9787115521477');

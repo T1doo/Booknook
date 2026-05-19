@@ -15,9 +15,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { PageHeader } from '@/components/layout/page-header';
 import { Pagination } from '@/components/layout/pagination';
 import { EmptyState } from '@/components/empty-state';
+import { RoleGuard } from '@/components/layout/auth-gate';
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
+import { useT } from '@/i18n';
 
 type User = {
   id: string; username: string; real_name: string; employee_no: string;
@@ -29,6 +31,16 @@ type User = {
 const PAGE_SIZE = 15;
 
 export default function UsersPage() {
+  // D2: 仅超管可访问. 普通管理员手输 /users 会自动 replace 到 /dashboard.
+  return (
+    <RoleGuard requiredRole="super_admin">
+      <UsersPageInner />
+    </RoleGuard>
+  );
+}
+
+function UsersPageInner() {
+  const t = useT();
   const me = useAuth((s) => s.user);
   const [page, setPage] = useState(1);
   const [q, setQ] = useState('');
@@ -63,40 +75,40 @@ export default function UsersPage() {
   return (
     <div>
       <PageHeader
-        title="用户管理"
-        description="超级管理员专属 · 创建/停用/修改普通管理员账号"
+        title={t('user.title_page')}
+        description={t('user.desc_page')}
         action={
           <Button onClick={() => setCreating(true)}>
-            <Plus className="size-4" />新建用户
+            <Plus className="size-4" />{t('user.new_button')}
           </Button>
         }
       />
 
       <div className="flex gap-2 mb-4">
-        <Input className="max-w-sm" placeholder="搜索用户名 / 姓名 / 工号"
+        <Input className="max-w-sm" placeholder={t('user.search_placeholder')}
                value={q} onChange={(e) => setQ(e.target.value)}
                onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); fetchList(); } }} />
-        <Button onClick={() => { setPage(1); fetchList(); }}>查询</Button>
+        <Button onClick={() => { setPage(1); fetchList(); }}>{t('common.search')}</Button>
       </div>
 
       {!data ? (
         <Skeleton className="h-64" />
       ) : data.total === 0 ? (
-        <EmptyState icon={Users} title="没有找到用户" />
+        <EmptyState icon={Users} title={t('user.empty')} />
       ) : (
         <>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-16">ID</TableHead>
-                <TableHead>用户名</TableHead>
-                <TableHead>真实姓名</TableHead>
-                <TableHead>工号</TableHead>
-                <TableHead>角色</TableHead>
-                <TableHead>性别 / 年龄</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>最近登录</TableHead>
-                <TableHead className="text-right">操作</TableHead>
+                <TableHead className="w-16">{t('common.id')}</TableHead>
+                <TableHead>{t('user.username')}</TableHead>
+                <TableHead>{t('user.real_name')}</TableHead>
+                <TableHead>{t('user.employee_no')}</TableHead>
+                <TableHead>{t('user.role')}</TableHead>
+                <TableHead>{t('user.gender_age')}</TableHead>
+                <TableHead>{t('user.status')}</TableHead>
+                <TableHead>{t('user.last_login')}</TableHead>
+                <TableHead className="text-right">{t('common.operations')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -108,14 +120,14 @@ export default function UsersPage() {
                   <TableCell>{u.employee_no}</TableCell>
                   <TableCell>
                     <Badge variant={u.role === 'super_admin' ? 'default' : 'muted'}>
-                      {u.role === 'super_admin' ? '超管' : '管理员'}
+                      {u.role === 'super_admin' ? t('user.role_super') : t('user.role_admin')}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm">
-                    {u.gender === 'male' ? '男' : u.gender === 'female' ? '女' : '—'} · {u.age ?? '—'}
+                    {u.gender === 'male' ? t('user.gender_male') : u.gender === 'female' ? t('user.gender_female') : '—'} · {u.age ?? '—'}
                   </TableCell>
                   <TableCell>
-                    {u.is_active ? <Badge variant="success">启用</Badge> : <Badge variant="destructive">已停用</Badge>}
+                    {u.is_active ? <Badge variant="success">{t('user.active')}</Badge> : <Badge variant="destructive">{t('user.inactive')}</Badge>}
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">{u.last_login_at ? formatDate(u.last_login_at) : '—'}</TableCell>
                   <TableCell className="text-right space-x-1">

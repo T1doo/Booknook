@@ -44,14 +44,30 @@ export default function DashboardPage() {
 
   useEffect(() => {
     // 拆成独立 then/catch, 单个接口失败不影响其他卡片渲染, 并能 toast 报错
-    const handle = (label: string) => (e: Error) =>
+    // 失败时 setter 兜底空值, 避免永久骨架屏 (用户看到的是 0 / 暂无, 而非加载中)
+    const handle = <T,>(label: string, fallback: T) => (e: Error) => {
       toast.error(`${label}加载失败: ${e.message}`);
-    api.get<DashboardData>('/analytics/dashboard').then(setData).catch(handle('KPI'));
-    api.get<SalesTrendItem[]>('/analytics/sales-trend').then(setTrend).catch(handle('销售趋势'));
-    api.get<TopBookItem[]>('/analytics/top-books').then(setTop).catch(handle('畅销榜'));
-    api.get<FinanceMonthItem[]>('/analytics/finance-monthly').then(setFinance).catch(handle('月度财务'));
-    api.get<CategoryItem[]>('/analytics/category').then(setCategories).catch(handle('库存分类'));
-    api.get<AlertItem[]>('/alerts').then(setAlerts).catch(handle('库存预警'));
+      return fallback;
+    };
+    const EMPTY_DASHBOARD: DashboardData = {
+      today: { sales: 0, orders: 0 },
+      month: { sales: 0, orders: 0 },
+      stock: { totalStock: 0, titles: 0 },
+      pendingPurchase: { amount: 0, count: 0 },
+      alertsCount: 0,
+    };
+    api.get<DashboardData>('/analytics/dashboard')
+      .then(setData).catch((e) => setData(handle('KPI', EMPTY_DASHBOARD)(e)));
+    api.get<SalesTrendItem[]>('/analytics/sales-trend')
+      .then(setTrend).catch((e) => setTrend(handle('销售趋势', [] as SalesTrendItem[])(e)));
+    api.get<TopBookItem[]>('/analytics/top-books')
+      .then(setTop).catch((e) => setTop(handle('畅销榜', [] as TopBookItem[])(e)));
+    api.get<FinanceMonthItem[]>('/analytics/finance-monthly')
+      .then(setFinance).catch((e) => setFinance(handle('月度财务', [] as FinanceMonthItem[])(e)));
+    api.get<CategoryItem[]>('/analytics/category')
+      .then(setCategories).catch((e) => setCategories(handle('库存分类', [] as CategoryItem[])(e)));
+    api.get<AlertItem[]>('/alerts')
+      .then(setAlerts).catch((e) => setAlerts(handle('库存预警', [] as AlertItem[])(e)));
   }, []);
 
   return (
@@ -59,14 +75,12 @@ export default function DashboardPage() {
       {/* ─── 顶部欢迎 ──────────────────────────────────────────── */}
       <header className="flex items-baseline justify-between">
         <div>
-          <h2 className="font-serif text-2xl font-semibold">概览</h2>
+          <h2 className="font-serif text-2xl font-semibold">{t('dashboard.title_page')}</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            欢迎回来,这里是您的暖书阁经营概况。
+            {t('dashboard.desc_page')}
           </p>
         </div>
-        <Badge variant="muted" className="font-mono">
-          {new Date().toLocaleString('zh-CN', { dateStyle: 'long', timeStyle: 'short' })}
-        </Badge>
+        <LiveClock />
       </header>
 
       {/* ─── KPI 四卡 ────────────────────────────────────────── */}
@@ -239,5 +253,19 @@ function EmptyChart({ text }: { text: string }) {
     <div className="h-[260px] flex items-center justify-center text-sm text-muted-foreground">
       {text}
     </div>
+  );
+}
+
+/** D11: 顶部时间分钟级自动刷新, 避免演示时停留 10 分钟数字不变让人怀疑卡死 */
+function LiveClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <Badge variant="muted" className="font-mono">
+      {now.toLocaleString('zh-CN', { dateStyle: 'long', timeStyle: 'short' })}
+    </Badge>
   );
 }

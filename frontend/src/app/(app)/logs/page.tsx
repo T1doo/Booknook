@@ -14,8 +14,10 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { PageHeader } from '@/components/layout/page-header';
 import { Pagination } from '@/components/layout/pagination';
 import { EmptyState } from '@/components/empty-state';
+import { RoleGuard } from '@/components/layout/auth-gate';
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
+import { useT } from '@/i18n';
 
 type Log = {
   id: string; user_id: string | null;
@@ -39,9 +41,20 @@ const RES_LABEL: Record<string, string> = {
 };
 
 export default function LogsPage() {
+  // D2: 仅超管可访问.
+  return (
+    <RoleGuard requiredRole="super_admin">
+      <LogsPageInner />
+    </RoleGuard>
+  );
+}
+
+function LogsPageInner() {
+  const t = useT();
   const [page, setPage] = useState(1);
   const [action, setAction] = useState('');
   const [resource, setResource] = useState('');
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [data, setData] = useState<{ total: number; list: Log[] } | null>(null);
 
   const fetchList = useCallback(async () => {
@@ -60,8 +73,8 @@ export default function LogsPage() {
   return (
     <div>
       <PageHeader
-        title="操作日志"
-        description="所有写入操作的全链路审计 · JSONB 完整入参留存"
+        title={t('log.title_page')}
+        description={t('log.desc_page')}
       />
 
       <Card className="mb-4">
@@ -116,28 +129,48 @@ export default function LogsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.list.map((log) => (
-                <TableRow key={log.id}>
-                  <TableCell className="text-xs text-muted-foreground tabular">{formatDate(log.created_at)}</TableCell>
-                  <TableCell className="text-sm">
-                    {log.user ? (
-                      <span>
-                        <span className="font-medium">{log.user.real_name}</span>
-                        <span className="text-muted-foreground"> @{log.user.username}</span>
-                      </span>
-                    ) : <span className="text-muted-foreground/50">—</span>}
-                  </TableCell>
-                  <TableCell><Badge variant="muted">{ACTION_LABEL[log.action] ?? log.action}</Badge></TableCell>
-                  <TableCell>{RES_LABEL[log.resource] ?? log.resource}</TableCell>
-                  <TableCell className="font-mono text-xs">{log.resource_id ?? '—'}</TableCell>
-                  <TableCell>
-                    <code className="text-xs text-muted-foreground line-clamp-1 max-w-md block">
-                      {log.payload && Object.keys(log.payload).length > 0 ? JSON.stringify(log.payload) : '—'}
-                    </code>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{log.ip ?? '—'}</TableCell>
-                </TableRow>
-              ))}
+              {/* D13: 行点击展开完整 JSONB payload, 解决"只截一行无法看到完整入参"的问题 */}
+              {data.list.map((log) => {
+                const isOpen = expanded === log.id;
+                const hasPayload = log.payload && Object.keys(log.payload).length > 0;
+                return (
+                  <>
+                    <TableRow
+                      key={log.id}
+                      className={hasPayload ? 'cursor-pointer hover:bg-muted/40' : ''}
+                      onClick={() => hasPayload && setExpanded(isOpen ? null : log.id)}
+                    >
+                      <TableCell className="text-xs text-muted-foreground tabular">{formatDate(log.created_at)}</TableCell>
+                      <TableCell className="text-sm">
+                        {log.user ? (
+                          <span>
+                            <span className="font-medium">{log.user.real_name}</span>
+                            <span className="text-muted-foreground"> @{log.user.username}</span>
+                          </span>
+                        ) : <span className="text-muted-foreground/50">—</span>}
+                      </TableCell>
+                      <TableCell><Badge variant="muted">{ACTION_LABEL[log.action] ?? log.action}</Badge></TableCell>
+                      <TableCell>{RES_LABEL[log.resource] ?? log.resource}</TableCell>
+                      <TableCell className="font-mono text-xs">{log.resource_id ?? '—'}</TableCell>
+                      <TableCell>
+                        <code className="text-xs text-muted-foreground line-clamp-1 max-w-md block">
+                          {hasPayload ? JSON.stringify(log.payload) : '—'}
+                        </code>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">{log.ip ?? '—'}</TableCell>
+                    </TableRow>
+                    {isOpen && hasPayload && (
+                      <TableRow key={`${log.id}-detail`}>
+                        <TableCell colSpan={7} className="bg-muted/30">
+                          <pre className="text-xs overflow-x-auto whitespace-pre-wrap break-all">
+                            {JSON.stringify(log.payload, null, 2)}
+                          </pre>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
+                );
+              })}
             </TableBody>
           </Table>
 

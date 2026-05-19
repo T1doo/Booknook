@@ -42,7 +42,8 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen grid lg:grid-cols-[1.1fr_1fr] bg-background overflow-hidden">
       {/* ─── 左侧装饰区:CSS 绘制的书架插画 ───────────────────────────── */}
-      <aside className="relative hidden lg:flex flex-col justify-between p-12 bg-gradient-to-br from-[#3B2614] via-[#5C3A1E] to-[#8C5A2A] text-amber-50">
+      {/* G2: aria-hidden 让屏幕阅读器跳过纯装饰区, 不朗读 16 本伪书名 */}
+      <aside aria-hidden="true" className="relative hidden lg:flex flex-col justify-between p-12 bg-gradient-to-br from-[#3B2614] via-[#5C3A1E] to-[#8C5A2A] text-amber-50">
         {/* 顶纸纹理 */}
         <div className="absolute inset-0 opacity-[0.06] pointer-events-none"
              style={{

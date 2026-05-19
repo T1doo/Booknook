@@ -58,7 +58,7 @@ export default function BooksPage() {
 
   return (
     <div>
-      <PageHeader title="库存图书" description="管理整个书城所有在库书籍" />
+      <PageHeader title={t('book.title_page')} description={t('book.desc_page')} />
 
       {/* 搜索栏 */}
       <div className="flex flex-col sm:flex-row gap-2 mb-4">
@@ -84,7 +84,7 @@ export default function BooksPage() {
           />
         </div>
         <Button onClick={() => { setPage(1); fetchList(); }}>
-          <Search className="size-4" />查询
+          <Search className="size-4" />{t('common.search')}
         </Button>
       </div>
 
@@ -94,23 +94,23 @@ export default function BooksPage() {
       ) : !data || data.total === 0 ? (
         <EmptyState
           icon={PackageX}
-          title="未找到相关书籍"
-          description="试试更换关键词,或清空筛选条件"
+          title={t('book.empty_title')}
+          description={t('book.empty_desc')}
         />
       ) : (
         <>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-16">ID</TableHead>
-                <TableHead>书名</TableHead>
-                <TableHead className="w-36 font-mono">ISBN</TableHead>
-                <TableHead className="w-28">作者</TableHead>
-                <TableHead className="w-32">出版社</TableHead>
-                <TableHead className="w-24">分类</TableHead>
-                <TableHead className="w-24 text-right">零售价</TableHead>
-                <TableHead className="w-24 text-right">库存</TableHead>
-                <TableHead className="w-24 text-right">操作</TableHead>
+                <TableHead className="w-16">{t('common.id')}</TableHead>
+                <TableHead>{t('book.title')}</TableHead>
+                <TableHead className="w-36 font-mono">{t('book.isbn')}</TableHead>
+                <TableHead className="w-28">{t('book.author')}</TableHead>
+                <TableHead className="w-32">{t('book.publisher')}</TableHead>
+                <TableHead className="w-24">{t('book.category')}</TableHead>
+                <TableHead className="w-24 text-right">{t('book.retail_price')}</TableHead>
+                <TableHead className="w-24 text-right">{t('book.stock')}</TableHead>
+                <TableHead className="w-24 text-right">{t('common.operations')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -126,12 +126,12 @@ export default function BooksPage() {
                   </TableCell>
                   <TableCell className="text-right tabular">{formatCurrency(b.retail_price)}</TableCell>
                   <TableCell className="text-right">
-                    <Badge variant={b.stock <= b.low_stock_threshold ? 'warning' : b.stock === 0 ? 'destructive' : 'success'} className="tabular">
+                    <Badge variant={b.stock === 0 ? 'destructive' : b.stock <= b.low_stock_threshold ? 'warning' : 'success'} className="tabular">
                       {b.stock}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => setEditing(b)} title="编辑">
+                    <Button variant="ghost" size="icon" onClick={() => setEditing(b)} title={t('common.edit')} aria-label={t('common.edit')}>
                       <Pencil className="size-4" />
                     </Button>
                   </TableCell>
@@ -158,6 +158,7 @@ function EditBookDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useT();
   const [title, setTitle]                       = useState('');
   const [author, setAuthor]                     = useState('');
   const [publisher, setPublisher]               = useState('');
@@ -188,10 +189,10 @@ function EditBookDialog({
         low_stock_threshold: Number(lowStockThreshold),
         category: category || undefined,
       });
-      toast.success('已更新');
+      toast.success(t('common.updated'));
       onSaved();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '更新失败');
+      toast.error(err instanceof Error ? err.message : t('common.update_failed'));
     } finally {
       setSubmitting(false);
     }
@@ -199,14 +200,14 @@ function EditBookDialog({
 
   const handleDelete = async () => {
     if (!book) return;
-    if (!confirm(`确定删除《${book.title}》?`)) return;
+    if (!confirm(t('book.delete_confirm', { title: book.title }))) return;
     setSubmitting(true);
     try {
       await api.delete(`/books/${book.id}`);
-      toast.success('已删除');
+      toast.success(t('common.deleted'));
       onSaved();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '删除失败');
+      toast.error(err instanceof Error ? err.message : t('common.delete_failed'));
     } finally {
       setSubmitting(false);
     }
@@ -216,52 +217,55 @@ function EditBookDialog({
     <Dialog open={!!book} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>编辑图书</DialogTitle>
+          <DialogTitle>{t('book.edit_title')}</DialogTitle>
           <DialogDescription>
-            ISBN <code className="font-mono">{book?.isbn}</code> · 当前库存 {book?.stock}
+            {t('book.edit_desc_prefix')} <code className="font-mono">{book?.isbn}</code> · {t('book.edit_desc_suffix')} {book?.stock}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
-          <div className="col-span-2 space-y-1.5">
-            <Label htmlFor="b-title">书名</Label>
-            <Input id="b-title" value={title} onChange={(e) => setTitle(e.target.value)} required />
+        {/* D12: DialogFooter 移到 form 内, 让保存按钮属于 form, 支持回车提交 */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2 space-y-1.5">
+              <Label htmlFor="b-title">{t('book.title')}</Label>
+              <Input id="b-title" value={title} onChange={(e) => setTitle(e.target.value)} required />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="b-author">{t('book.author')}</Label>
+              <Input id="b-author" value={author} onChange={(e) => setAuthor(e.target.value)} required />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="b-publisher">{t('book.publisher')}</Label>
+              <Input id="b-publisher" value={publisher} onChange={(e) => setPublisher(e.target.value)} required />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="b-price">{t('book.retail_price_yuan')}</Label>
+              <Input id="b-price" type="number" min="0" step="0.01"
+                     value={retailPrice} onChange={(e) => setRetailPrice(e.target.value)} required />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="b-threshold">{t('book.low_threshold')}</Label>
+              <Input id="b-threshold" type="number" min="0"
+                     value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)} required />
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label htmlFor="b-cat">{t('book.category')}</Label>
+              <Input id="b-cat" placeholder={t('book.category_placeholder')}
+                     value={category} onChange={(e) => setCategory(e.target.value)} />
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="b-author">作者</Label>
-            <Input id="b-author" value={author} onChange={(e) => setAuthor(e.target.value)} required />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="b-publisher">出版社</Label>
-            <Input id="b-publisher" value={publisher} onChange={(e) => setPublisher(e.target.value)} required />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="b-price">零售价 (¥)</Label>
-            <Input id="b-price" type="number" min="0" step="0.01"
-                   value={retailPrice} onChange={(e) => setRetailPrice(e.target.value)} required />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="b-threshold">低库存阈值</Label>
-            <Input id="b-threshold" type="number" min="0"
-                   value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)} required />
-          </div>
-          <div className="col-span-2 space-y-1.5">
-            <Label htmlFor="b-cat">分类</Label>
-            <Input id="b-cat" placeholder="文学 / 计算机 / 哲学 …"
-                   value={category} onChange={(e) => setCategory(e.target.value)} />
-          </div>
+          <DialogFooter>
+            <Button type="button" variant="destructive" onClick={handleDelete} disabled={submitting} aria-label={t('common.delete')}>
+              <Trash2 className="size-4" />{t('common.delete')}
+            </Button>
+            <div className="flex-1" />
+            <DialogClose asChild>
+              <Button type="button" variant="outline">{t('common.cancel')}</Button>
+            </DialogClose>
+            <Button type="submit" disabled={submitting} loading={submitting}>
+              {t('common.save')}
+            </Button>
+          </DialogFooter>
         </form>
-        <DialogFooter>
-          <Button variant="destructive" onClick={handleDelete} disabled={submitting}>
-            <Trash2 className="size-4" />删除
-          </Button>
-          <div className="flex-1" />
-          <DialogClose asChild>
-            <Button variant="outline">取消</Button>
-          </DialogClose>
-          <Button onClick={handleSubmit} disabled={submitting} loading={submitting}>
-            保存
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

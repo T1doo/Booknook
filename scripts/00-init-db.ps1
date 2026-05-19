@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     BookNook · 数据库一键初始化
 .DESCRIPTION
@@ -22,6 +22,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# 把控制台 + .NET 输出统一切到 UTF-8, 否则中文 Windows (gb2312) 下显示 psql 中文输出会乱码
+try { chcp 65001 | Out-Null } catch {}
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
 function Write-Section($t) {
     Write-Host ""

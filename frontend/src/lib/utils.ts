@@ -33,3 +33,28 @@ export function formatDate(
   if (fmt === 'time') return `${h}:${m}:${s}`;
   return `${Y}-${M}-${D} ${h}:${m}`;
 }
+
+/**
+ * 把"日期字符串"按"本地一整天"的语义转成 ISO 时间区间, 用于 API 的 from/to (D4).
+ *
+ *   fromStr='2026-05-19' → 本地 00:00:00 → ISO (UTC) 时间
+ *   toStr  ='2026-05-19' → 本地 23:59:59.999 → ISO (UTC) 时间
+ *
+ * 这样跨日选择能完整包含一整天的数据, 不会因时区把当天最后 8 小时(北京时间)
+ * 推到下一天而漏掉.
+ */
+export function toCnRangeIso(fromStr?: string, toStr?: string): {
+  from?: string;
+  to?: string;
+} {
+  const out: { from?: string; to?: string } = {};
+  if (fromStr) {
+    const d = new Date(fromStr + 'T00:00:00');
+    if (!Number.isNaN(d.getTime())) out.from = d.toISOString();
+  }
+  if (toStr) {
+    const d = new Date(toStr + 'T23:59:59.999');
+    if (!Number.isNaN(d.getTime())) out.to = d.toISOString();
+  }
+  return out;
+}

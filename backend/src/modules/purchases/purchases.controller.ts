@@ -82,7 +82,12 @@ const createSchema = z.object({
 
 router.post('/', validate('body', createSchema), async (req, res) => {
   const body = req.body as z.infer<typeof createSchema>;
-  const total = body.items.reduce((s, it) => s + it.purchase_price * it.quantity, 0);
+  // 按"分"为整数累加, 避免 JS Number 浮点累积误差 (B6)
+  let totalCents = 0n;
+  for (const it of body.items) {
+    totalCents += BigInt(Math.round(it.purchase_price * 100)) * BigInt(it.quantity);
+  }
+  const total = (Number(totalCents) / 100).toFixed(2);
 
   const po = await prisma.$transaction(async (tx) => {
     // 由 DB 函数生成订单号
@@ -121,17 +126,27 @@ router.post('/', validate('body', createSchema), async (req, res) => {
 });
 
 // ──────────── 状态推进 helpers ──────────────────────────────────────────────
-async function transitStatus(id: bigint, from: string[], to: 'paid' | 'returned' | 'received') {
-  const po = await prisma.purchaseOrder.findUnique({ where: { id } });
-  if (!po) throw Err.notFound('进货单不存在');
-  // 幂等: 已经在目标状态时直接返回, 避免网络重试导致的 400
-  // 触发器声明了 WHEN OLD.status IS DISTINCT FROM NEW.status, 即便我们再 UPDATE 也不会重复写流水
-  if (po.status === to) return po;
-  if (!from.includes(po.status)) {
+type PoStatus = 'pending' | 'paid' | 'returned' | 'received';
+
+/**
+ * 原子地推进进货单状态.
+ *  - 使用 updateMany(where:{id, status:{in: from}}) 把"读 + 写"合并到一个 SQL,
+ *    DB 层加行锁, 避免并发两个 pay 都先读到 pending 然后双写 paid 触发双流水 (B3).
+ *  - count===0 时再判断是"不存在 / 已在目标态(幂等) / 当前状态不允许".
+ *  - 触发器会处理副作用 (写流水 / 入库 / 元数据一致性校验).
+ */
+async function transitStatus(id: bigint, from: PoStatus[], to: 'paid' | 'returned' | 'received') {
+  const result = await prisma.purchaseOrder.updateMany({
+    where: { id, status: { in: from } },
+    data:  { status: to },
+  });
+  if (result.count === 0) {
+    const po = await prisma.purchaseOrder.findUnique({ where: { id } });
+    if (!po) throw Err.notFound('进货单不存在');
+    if (po.status === to) return po; // 幂等
     throw Err.badRequest(`当前状态 ${po.status},不允许变更为 ${to}`);
   }
-  // 触发器会处理副作用 (写流水 / 入库)
-  return prisma.purchaseOrder.update({ where: { id }, data: { status: to } });
+  return prisma.purchaseOrder.findUnique({ where: { id } });
 }
 
 router.post('/:id/pay', async (req, res) => {

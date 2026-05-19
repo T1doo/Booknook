@@ -4,6 +4,7 @@
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import { z } from 'zod';
+import rateLimit from 'express-rate-limit';
 import { prisma } from '../../config/db.js';
 import { env } from '../../config/env.js';
 import { signToken } from '../../utils/jwt.js';
@@ -19,8 +20,18 @@ const loginSchema = z.object({
   password: z.string().min(1).max(128),
 });
 
+// C4: 登录速率限制, 15 分钟内同一 IP 最多 20 次尝试.
+//     字典攻击场景下大幅抬高破解成本; 正常用户绝不会触发.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { code: 4029, data: null, message: '尝试过于频繁,请 15 分钟后再试' },
+});
+
 // ────────────────── POST /auth/login ────────────────────────────────────────
-router.post('/login', validate('body', loginSchema), async (req: Request, res: Response) => {
+router.post('/login', loginLimiter, validate('body', loginSchema), async (req: Request, res: Response) => {
   const { username, password } = req.body as z.infer<typeof loginSchema>;
 
   const user = await prisma.user.findUnique({ where: { username } });
@@ -36,15 +47,18 @@ router.post('/login', validate('body', loginSchema), async (req: Request, res: R
 
   const token = signToken({ uid: user.id.toString(), username: user.username, role: user.role });
 
+  // HttpOnly cookie 是 token 的唯一权威载体 (C6).
+  // - sameSite=strict + path=/api 进一步收窄 CSRF 攻击面
+  // - 不再把 token 放在响应 body 让前端存 localStorage, 避免 XSS 后被偷
   res.cookie(env.COOKIE_NAME, token, {
     httpOnly: true,
     secure: !env.isDev,
-    sameSite: 'lax',
+    sameSite: 'strict',
+    path: '/api',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
   ok(res, {
-    token,
     user: {
       id: user.id.toString(),
       username: user.username,
@@ -59,7 +73,8 @@ router.post('/login', validate('body', loginSchema), async (req: Request, res: R
 
 // ────────────────── POST /auth/logout ───────────────────────────────────────
 router.post('/logout', (_req, res) => {
-  res.clearCookie(env.COOKIE_NAME);
+  // clearCookie 必须匹配 set 时的 path, 否则浏览器不会清除
+  res.clearCookie(env.COOKIE_NAME, { path: '/api' });
   ok(res, null, '已登出');
 });
 

@@ -15,7 +15,8 @@ import { PageHeader } from '@/components/layout/page-header';
 import { Pagination } from '@/components/layout/pagination';
 import { EmptyState } from '@/components/empty-state';
 import { api } from '@/lib/api';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, toCnRangeIso } from '@/lib/utils';
+import { useT } from '@/i18n';
 
 type Tx = {
   id: string; type: 'income' | 'expense'; amount: string | number;
@@ -30,6 +31,7 @@ type Resp = {
 const PAGE_SIZE = 20;
 
 export default function TransactionsPage() {
+  const t = useT();
   const [tab, setTab] = useState<'all' | 'income' | 'expense'>('all');
   const [from, setFrom] = useState('');
   const [to, setTo]     = useState('');
@@ -45,8 +47,10 @@ export default function TransactionsPage() {
         pageSize: String(PAGE_SIZE),
       });
       if (tab !== 'all') qs.set('type', tab);
-      if (from) qs.set('from', new Date(from).toISOString());
-      if (to)   qs.set('to',   new Date(to + 'T23:59:59').toISOString());
+      // D4: 用 toCnRangeIso 把"本地一整天"完整覆盖, 避免时区飘移漏数据
+      const range = toCnRangeIso(from, to);
+      if (range.from) qs.set('from', range.from);
+      if (range.to)   qs.set('to',   range.to);
       const r = await api.get<Resp>(`/transactions?${qs}`);
       setData(r);
     } finally {
@@ -58,13 +62,13 @@ export default function TransactionsPage() {
 
   return (
     <div>
-      <PageHeader title="财务账单" description="按日期范围与类型筛选所有收入支出流水" />
+      <PageHeader title={t('transaction.title_page')} description={t('transaction.desc_page')} />
 
       {/* 汇总 KPI */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <SummaryCard icon={TrendingUp} label="收入合计"  value={data?.summary.income} count={data?.summary.income_count} color="emerald" />
-        <SummaryCard icon={TrendingDown} label="支出合计" value={data?.summary.expense} count={data?.summary.expense_count} color="rose" />
-        <SummaryCard icon={Receipt} label="净收益"
+        <SummaryCard icon={TrendingUp} label={t('transaction.income_total')}  value={data?.summary.income} count={data?.summary.income_count} color="emerald" />
+        <SummaryCard icon={TrendingDown} label={t('transaction.expense_total')} value={data?.summary.expense} count={data?.summary.expense_count} color="rose" />
+        <SummaryCard icon={Receipt} label={t('transaction.net')}
           value={data ? data.summary.income - data.summary.expense : undefined}
           count={data ? data.summary.income_count + data.summary.expense_count : undefined}
           color="amber" />
@@ -76,21 +80,21 @@ export default function TransactionsPage() {
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto] gap-3 items-end">
             <Tabs value={tab} onValueChange={(v) => { setTab(v as typeof tab); setPage(1); }}>
               <TabsList>
-                <TabsTrigger value="all">全部</TabsTrigger>
-                <TabsTrigger value="income">收入</TabsTrigger>
-                <TabsTrigger value="expense">支出</TabsTrigger>
+                <TabsTrigger value="all">{t('transaction.filter_all')}</TabsTrigger>
+                <TabsTrigger value="income">{t('transaction.income')}</TabsTrigger>
+                <TabsTrigger value="expense">{t('transaction.expense')}</TabsTrigger>
               </TabsList>
             </Tabs>
             <div className="space-y-1.5">
-              <Label htmlFor="from">起始日期</Label>
+              <Label htmlFor="from">{t('common.from_date')}</Label>
               <Input id="from" type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="to">截止日期</Label>
+              <Label htmlFor="to">{t('common.to_date')}</Label>
               <Input id="to" type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} />
             </div>
             <Button variant="outline" onClick={() => { setFrom(''); setTo(''); setTab('all'); setPage(1); }}>
-              重置
+              {t('common.reset')}
             </Button>
           </div>
         </CardContent>
@@ -99,17 +103,17 @@ export default function TransactionsPage() {
       {loading && !data ? (
         <Skeleton className="h-64" />
       ) : !data || data.total === 0 ? (
-        <EmptyState icon={Calendar} title="该范围内没有流水" />
+        <EmptyState icon={Calendar} title={t('transaction.empty')} />
       ) : (
         <>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>时间</TableHead>
-                <TableHead>类型</TableHead>
-                <TableHead className="text-right">金额</TableHead>
-                <TableHead>描述</TableHead>
-                <TableHead>操作员</TableHead>
+                <TableHead>{t('common.time')}</TableHead>
+                <TableHead>{t('transaction.type')}</TableHead>
+                <TableHead className="text-right">{t('transaction.amount')}</TableHead>
+                <TableHead>{t('transaction.description')}</TableHead>
+                <TableHead>{t('common.operator')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -118,7 +122,7 @@ export default function TransactionsPage() {
                   <TableCell className="text-xs text-muted-foreground">{formatDate(tx.created_at)}</TableCell>
                   <TableCell>
                     <Badge variant={tx.type === 'income' ? 'success' : 'destructive'}>
-                      {tx.type === 'income' ? '收入' : '支出'}
+                      {tx.type === 'income' ? t('transaction.income') : t('transaction.expense')}
                     </Badge>
                   </TableCell>
                   <TableCell className={`text-right tabular font-medium ${tx.type === 'income' ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>

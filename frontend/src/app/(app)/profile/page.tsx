@@ -14,8 +14,10 @@ import { PageHeader } from '@/components/layout/page-header';
 import { api } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import { formatDate } from '@/lib/utils';
+import { useT } from '@/i18n';
 
 export default function ProfilePage() {
+  const t = useT();
   const me = useAuth((s) => s.user);
   const setUser = useAuth((s) => s.setUser);
 
@@ -68,7 +70,7 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <PageHeader title="我的信息" description="可修改个人资料 / 重置密码" />
+      <PageHeader title={t('profile.title_page')} description={t('profile.desc_page')} />
 
       <div className="grid grid-cols-1 gap-6">
         <Card>

@@ -49,28 +49,28 @@ COMMENT ON VIEW v_monthly_finance IS 'Dashboard · 月度收支汇总';
 
 -- ---------------------------------------------------------------------------
 -- 视图 3: 按日聚合的销售趋势 (近 30 天)
+--   注意: 三个聚合用独立子查询, 避免 JOIN sale_order_items 后导致 total_amount
+--         被 items 行数复制求和 (一单 3 项 100 元会得到 300 元的伪结果)
 -- ---------------------------------------------------------------------------
 DROP VIEW IF EXISTS v_daily_sales_trend CASCADE;
 CREATE VIEW v_daily_sales_trend AS
 SELECT
-    d::DATE                                            AS day,
-    COALESCE(s.order_count,   0)                       AS order_count,
-    COALESCE(s.book_count,    0)                       AS book_count,
-    COALESCE(s.total_amount,  0)                       AS total_amount
+    d::DATE AS day,
+    (SELECT COUNT(*)
+       FROM public.sale_orders
+      WHERE created_at::DATE = d::DATE)::INT                              AS order_count,
+    (SELECT COALESCE(SUM(soi.quantity), 0)::INT
+       FROM public.sale_order_items soi
+       JOIN public.sale_orders      so  ON so.id = soi.order_id
+      WHERE so.created_at::DATE = d::DATE)                                AS book_count,
+    (SELECT COALESCE(SUM(total_amount), 0)
+       FROM public.sale_orders
+      WHERE created_at::DATE = d::DATE)                                   AS total_amount
 FROM generate_series(
         (CURRENT_DATE - INTERVAL '29 day')::DATE,
         CURRENT_DATE,
         INTERVAL '1 day'
-    ) AS d
-LEFT JOIN LATERAL (
-    SELECT
-        COUNT(DISTINCT so.id)             AS order_count,
-        COALESCE(SUM(soi.quantity), 0)    AS book_count,
-        COALESCE(SUM(so.total_amount), 0) AS total_amount
-    FROM public.sale_orders so
-    LEFT JOIN public.sale_order_items soi ON soi.order_id = so.id
-    WHERE so.created_at::DATE = d::DATE
-) s ON TRUE;
+    ) AS d;
 
 COMMENT ON VIEW v_daily_sales_trend IS 'Dashboard · 近 30 天销售趋势';
 

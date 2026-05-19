@@ -111,11 +111,10 @@ router.post('/', validate('body', createUserSchema), async (req, res) => {
 });
 
 // PATCH /users/:id
-router.patch('/:id', async (req, res) => {
-  const id = BigInt(req.params.id);
-  const parsed = updateUserSchema.safeParse(req.body);
-  if (!parsed.success) throw Err.unprocessable('参数错误');
-  const body = parsed.data;
+// F6: 改用 validate 中间件, 错误信息与其他路由统一格式
+router.patch('/:id', validate('body', updateUserSchema), async (req, res) => {
+  const id = BigInt(req.params.id as string);
+  const body = req.body as z.infer<typeof updateUserSchema>;
 
   const target = await prisma.user.findUnique({ where: { id } });
   if (!target) throw Err.notFound();
@@ -146,6 +145,17 @@ router.delete('/:id', async (req, res) => {
   if (id.toString() === req.user!.uid) throw Err.badRequest('不能删除自己');
   const target = await prisma.user.findUnique({ where: { id } });
   if (!target) throw Err.notFound();
+
+  // C12: 禁用最后一个超管会让系统失去管理入口, 拒绝.
+  if (target.role === 'super_admin' && target.is_active) {
+    const remainingSuperAdmins = await prisma.user.count({
+      where: { role: 'super_admin', is_active: true, id: { not: id } },
+    });
+    if (remainingSuperAdmins === 0) {
+      throw Err.badRequest('不能停用最后一个超级管理员');
+    }
+  }
+
   await prisma.user.update({ where: { id }, data: { is_active: false } });
   ok(res, null, '已停用');
 });

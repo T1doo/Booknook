@@ -1,9 +1,12 @@
 /**
  * 用户认证状态 (zustand)
+ *
+ * - 不再存储 token: 鉴权完全由 HttpOnly cookie 承担 (C6)
+ * - persist 只持久化 user (用于刷新瞬间 UI 不闪烁), 但权威信息以 /auth/me 为准
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { api, setToken } from '@/lib/api';
+import { api } from '@/lib/api';
 
 export type User = {
   id: string;
@@ -39,20 +42,20 @@ export const useAuth = create<AuthState>()(
         }
       },
       login: async (username, password) => {
-        const r = await api.post<{ token: string; user: User }>(
-          '/auth/login',
-          { username, password },
-        );
-        setToken(r.token);
+        // 后端通过 Set-Cookie 下发 HttpOnly token, 响应 body 只含 user
+        const r = await api.post<{ user: User }>('/auth/login', { username, password });
         set({ user: r.user });
         return r.user;
       },
       logout: async () => {
         try { await api.post('/auth/logout'); } catch { /* ignore */ }
-        setToken(null);
         set({ user: null });
       },
     }),
-    { name: 'booknook-auth', partialize: (s) => ({ user: s.user } as AuthState) },
+    {
+      name: 'booknook-auth',
+      // G5: 不强转, 只持久化 user 字段
+      partialize: (s) => ({ user: s.user } as unknown as AuthState),
+    },
   ),
 );

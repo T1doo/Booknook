@@ -6,6 +6,7 @@
  */
 import { Router } from 'express';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/db.js';
 import { ok, Err } from '../../utils/http.js';
 import { validate } from '../../middlewares/validate.js';
@@ -33,7 +34,8 @@ router.post('/:id/resolve', async (req, res) => {
 });
 
 const thresholdSchema = z.object({
-  low_stock_threshold: z.coerce.number().int().nonnegative(),
+  // 阈值上限 10000, 防止恶意设置极大值刷爆 inventory_alerts (F8)
+  low_stock_threshold: z.coerce.number().int().nonnegative().max(10000),
 });
 
 router.patch('/threshold/:bookId', validate('body', thresholdSchema), async (req, res) => {
@@ -44,8 +46,8 @@ router.patch('/threshold/:bookId', validate('body', thresholdSchema), async (req
     where: { id: bookId },
     data:  { low_stock_threshold: (req.body as z.infer<typeof thresholdSchema>).low_stock_threshold },
   });
-  // 重新评估
-  await prisma.$queryRawUnsafe(`SELECT fn_books_low_stock_check(${bookId.toString()})`);
+  // 重新评估: 用模板字面量参数化, 杜绝 SQL 注入风险 (C7)
+  await prisma.$queryRaw(Prisma.sql`SELECT fn_books_low_stock_check(${bookId})`);
   ok(res, updated, '已更新阈值');
 });
 

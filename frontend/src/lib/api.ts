@@ -1,23 +1,23 @@
 /**
  * 后端 API 客户端
- *  - 自动带 token (从 localStorage 或 cookie)
+ *  - 鉴权全靠 HttpOnly cookie (浏览器自动随同 credentials:include 携带), 不再用 localStorage
+ *    存 token, 避免 XSS 偷走凭证 (C6).
  *  - 统一错误处理
  *  - SWR-friendly 的 GET 包装
  */
 
 const isClient = typeof window !== 'undefined';
 
-const TOKEN_KEY = 'booknook_token';
-
+/**
+ * 留作兼容空壳: 旧代码可能仍 import setToken/getToken. 现在它们是 no-op,
+ * 因为 token 完全由后端通过 HttpOnly cookie 管理.
+ */
 export function getToken(): string | null {
-  if (!isClient) return null;
-  return localStorage.getItem(TOKEN_KEY);
+  return null;
 }
 
-export function setToken(token: string | null) {
-  if (!isClient) return;
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+export function setToken(_token: string | null) {
+  /* no-op: token 不再存在前端可访问的位置 */
 }
 
 export class ApiError extends Error {
@@ -46,8 +46,7 @@ async function request<T>(
     'Content-Type': 'application/json',
     ...((init?.headers as Record<string, string>) ?? {}),
   };
-  const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
+  // 鉴权统一走 HttpOnly cookie (credentials: 'include'), 不再手动设 Authorization (C6)
 
   // 用 AbortController 给 fetch 加超时, 否则离线/慢网时 UI 永远停在 loading
   const ctrl = new AbortController();
@@ -84,8 +83,7 @@ async function request<T>(
 
   if (!res.ok || (payload.code != null && payload.code !== 0)) {
     if (res.status === 401 && isClient) {
-      setToken(null);
-      // 仅当不在登录页时才重定向
+      // 仅当不在登录页时才重定向 (HttpOnly cookie 已由后端 401 + clearCookie 清除)
       if (!window.location.pathname.startsWith('/login')) {
         window.location.href = '/login';
       }
@@ -105,14 +103,12 @@ export const api = {
 
 /** 直接下载二进制 (Excel/PDF), 60s 超时 (导出大文件可能慢) */
 export async function downloadFile(path: string, filename: string): Promise<void> {
-  const token = getToken();
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 60_000);
   let res: Response;
   try {
     res = await fetch(`/api${path}`, {
-      headers: { Authorization: `Bearer ${token ?? ''}` },
-      credentials: 'include',
+      credentials: 'include', // 用 HttpOnly cookie 鉴权
       signal: ctrl.signal,
     });
   } catch (e) {
@@ -123,7 +119,11 @@ export async function downloadFile(path: string, filename: string): Promise<void
     throw e;
   }
   clearTimeout(timer);
-  if (!res.ok) throw new Error('下载失败');
+  if (!res.ok) {
+    // D5: 把后端 {code, message} 透传, 失败时让用户看到具体原因
+    const j = await res.json().catch(() => null);
+    throw new Error(j?.message ?? `下载失败 (HTTP ${res.status})`);
+  }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

@@ -16,6 +16,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { EmptyState } from '@/components/empty-state';
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
+import { useT } from '@/i18n';
 
 type Alert = {
   id: string; book_id: string; threshold: number; current_stock: number;
@@ -24,6 +25,7 @@ type Alert = {
 };
 
 export default function AlertsPage() {
+  const t = useT();
   const [list, setList] = useState<Alert[] | null>(null);
   const [editing, setEditing] = useState<Alert | null>(null);
 
@@ -47,8 +49,8 @@ export default function AlertsPage() {
   return (
     <div>
       <PageHeader
-        title="库存预警"
-        description="销售触发器自动检测库存低于阈值的书籍,可在此处理或修改阈值"
+        title={t('alert.title_page')}
+        description={t('alert.desc_page')}
       />
 
       {!list ? (
@@ -56,28 +58,27 @@ export default function AlertsPage() {
       ) : list.length === 0 ? (
         <EmptyState
           icon={CheckCircle2}
-          title="一切安好!"
-          description="当前所有书籍库存都充足。预警表将在销售触发器命中阈值时自动产生记录。"
+          title={t('alert.empty')}
         />
       ) : (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Bell className="size-4 text-destructive" />
-              {list.length} 项未处理预警
+              {list.length}
             </CardTitle>
-            <CardDescription>建议尽快补货或下调销售节奏</CardDescription>
+            <CardDescription>{t('alert.desc_page')}</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="font-mono">ISBN</TableHead>
-                  <TableHead>书名</TableHead>
-                  <TableHead>作者</TableHead>
-                  <TableHead className="text-right">当前 / 阈值</TableHead>
-                  <TableHead className="text-right">最近预警</TableHead>
-                  <TableHead className="text-right w-44">操作</TableHead>
+                  <TableHead className="font-mono">{t('book.isbn')}</TableHead>
+                  <TableHead>{t('book.title')}</TableHead>
+                  <TableHead>{t('book.author')}</TableHead>
+                  <TableHead className="text-right">{t('alert.current_stock')} / {t('alert.threshold')}</TableHead>
+                  <TableHead className="text-right">{t('alert.alert_time')}</TableHead>
+                  <TableHead className="text-right w-44">{t('common.operations')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -94,10 +95,10 @@ export default function AlertsPage() {
                     <TableCell className="text-right text-xs text-muted-foreground">{formatDate(a.last_alerted_at)}</TableCell>
                     <TableCell className="text-right space-x-1">
                       <Button variant="outline" size="sm" onClick={() => setEditing(a)}>
-                        <Settings2 className="size-3.5" />调阈值
+                        <Settings2 className="size-3.5" />{t('alert.edit_threshold')}
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => resolve(a.id)}>
-                        <CheckCircle2 className="size-3.5" />已处理
+                        <CheckCircle2 className="size-3.5" />{t('alert.resolve')}
                       </Button>
                     </TableCell>
                   </TableRow>

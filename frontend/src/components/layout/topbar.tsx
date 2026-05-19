@@ -42,14 +42,25 @@ export function Topbar() {
   const seg = pathname.split('/')[1] || 'dashboard';
   const titleKey = titleMap[seg] || 'nav.dashboard';
 
-  // 轻量轮询: 库存预警数 (15s)
+  // 轻量轮询: 库存预警数 (15s).
+  // D14: 只在 tab 可见时轮询, 多 tab / 隐藏 tab 不再增加后端请求.
+  // G4: 变量名 setInterval 句柄改为 timer, 避免和 useT() 的 t 函数同名.
   const [alertCount, setAlertCount] = useState(0);
   useEffect(() => {
-    const load = () =>
-      api.get<unknown[]>('/alerts').then((r) => setAlertCount(Array.isArray(r) ? r.length : 0)).catch(() => {});
+    const load = () => {
+      if (document.visibilityState !== 'visible') return;
+      api.get<unknown[]>('/alerts')
+        .then((r) => setAlertCount(Array.isArray(r) ? r.length : 0))
+        .catch(() => {});
+    };
     load();
-    const t = setInterval(load, 15000);
-    return () => clearInterval(t);
+    const timer = setInterval(load, 15000);
+    const onVis = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, []);
 
   return (

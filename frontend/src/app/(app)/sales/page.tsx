@@ -18,7 +18,9 @@ import { PageHeader } from '@/components/layout/page-header';
 import { Pagination } from '@/components/layout/pagination';
 import { EmptyState } from '@/components/empty-state';
 import { api } from '@/lib/api';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, toCnRangeIso } from '@/lib/utils';
+import { Label } from '@/components/ui/label';
+import { useT } from '@/i18n';
 
 type Book = {
   id: string; isbn: string; title: string; author: string; retail_price: number | string; stock: number;
@@ -35,21 +37,34 @@ type SaleOrder = {
 const PAGE_SIZE = 10;
 
 export default function SalesPage() {
+  const t = useT();
   const [search, setSearch] = useState('');
   const [matches, setMatches] = useState<Book[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // D6: 结账失败时高亮哪一行书库存不足
+  const [errorBookId, setErrorBookId] = useState<string | null>(null);
 
   // 销售单列表 (右侧 / 下方)
   const [page, setPage] = useState(1);
   const [orders, setOrders] = useState<{ total: number; list: SaleOrder[] } | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
+  // D7: 销售单按日期范围筛选
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
 
   const fetchOrders = useCallback(async () => {
-    const r = await api.get<{ total: number; list: SaleOrder[] }>(`/sales?page=${page}&pageSize=${PAGE_SIZE}`);
+    const qs = new URLSearchParams({
+      page: String(page),
+      pageSize: String(PAGE_SIZE),
+    });
+    const range = toCnRangeIso(from, to);
+    if (range.from) qs.set('from', range.from);
+    if (range.to) qs.set('to', range.to);
+    const r = await api.get<{ total: number; list: SaleOrder[] }>(`/sales?${qs}`);
     setOrders(r);
-  }, [page]);
+  }, [page, from, to]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
@@ -85,9 +100,13 @@ export default function SalesPage() {
   const removeLine = (id: string) => setCart((p) => p.filter((l) => l.book.id !== id));
   const cartTotal  = cart.reduce((s, l) => s + Number(l.book.retail_price) * l.quantity, 0);
 
+  // D6: 购物车任何变更后清掉错误高亮
+  useEffect(() => { setErrorBookId(null); }, [cart]);
+
   const checkout = async () => {
     if (cart.length === 0) return;
     setSubmitting(true);
+    setErrorBookId(null);
     try {
       const r = await api.post<SaleOrder>('/sales', {
         customer_note: note || undefined,
@@ -97,7 +116,14 @@ export default function SalesPage() {
       setCart([]); setNote(''); setMatches([]); setSearch('');
       fetchOrders();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '结账失败');
+      const message = err instanceof Error ? err.message : '结账失败';
+      toast.error(message);
+      // D6: 解析后端"《xxx》库存不足"提示, 把购物车里对应行标红
+      const m = /《([^》]+)》/.exec(message);
+      if (m) {
+        const hit = cart.find((l) => l.book.title === m[1]);
+        if (hit) setErrorBookId(hit.book.id);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -105,7 +131,7 @@ export default function SalesPage() {
 
   return (
     <div>
-      <PageHeader title="销售收银" description="搜索图书 → 加入购物车 → 一键结账" />
+      <PageHeader title={t('sale.title_page')} description={t('sale.desc_page')} />
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_22rem] gap-6">
         {/* ─── 左侧: 搜索与结果 ──────────────────────────────────── */}
@@ -113,9 +139,9 @@ export default function SalesPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <Search className="size-4" />检索图书
+                <Search className="size-4" />{t('sale.search_title')}
               </CardTitle>
-              <CardDescription>支持书名 / 作者 / 出版社 / ISBN</CardDescription>
+              <CardDescription>{t('sale.search_desc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex gap-2">
@@ -125,12 +151,12 @@ export default function SalesPage() {
                   onChange={(e) => setSearch(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') doSearch(); }}
                 />
-                <Button onClick={doSearch}><Search className="size-4" />搜索</Button>
+                <Button onClick={doSearch}><Search className="size-4" />{t('common.search')}</Button>
               </div>
 
               {matches.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">
-                  输入关键词后回车,或点击搜索按钮
+                  {t('sale.search_hint')}
                 </p>
               ) : (
                 <ul className="divide-y divide-border">
@@ -145,11 +171,11 @@ export default function SalesPage() {
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
                         <Badge variant={b.stock <= 0 ? 'destructive' : 'muted'} className="tabular">
-                          库存 {b.stock}
+                          {t('sale.stock_label')} {b.stock}
                         </Badge>
                         <span className="font-mono w-20 text-right">{formatCurrency(b.retail_price)}</span>
                         <Button size="sm" disabled={b.stock <= 0} onClick={() => addToCart(b)}>
-                          <Plus className="size-4" />加入
+                          <Plus className="size-4" />{t('sale.add_to_cart')}
                         </Button>
                       </div>
                     </li>
@@ -163,23 +189,41 @@ export default function SalesPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <ReceiptText className="size-4" />近期销售单
+                <ReceiptText className="size-4" />{t('sale.recent_orders')}
               </CardTitle>
+              {/* D7: 日期范围筛选 */}
+              <div className="flex flex-wrap items-end gap-2 pt-3">
+                <div className="space-y-1">
+                  <Label htmlFor="sales-from" className="text-xs">起始</Label>
+                  <Input id="sales-from" type="date" className="h-8 w-36"
+                         value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="sales-to" className="text-xs">截止</Label>
+                  <Input id="sales-to" type="date" className="h-8 w-36"
+                         value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} />
+                </div>
+                {(from || to) && (
+                  <Button variant="outline" size="sm" onClick={() => { setFrom(''); setTo(''); setPage(1); }}>
+                    清空
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {!orders ? (
                 <Skeleton className="h-32" />
               ) : orders.total === 0 ? (
-                <EmptyState title="还没有销售记录" />
+                <EmptyState title={t('sale.no_orders')} />
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="font-mono">订单号</TableHead>
-                      <TableHead>时间</TableHead>
-                      <TableHead>操作员</TableHead>
-                      <TableHead>明细</TableHead>
-                      <TableHead className="text-right">金额</TableHead>
+                      <TableHead className="font-mono">{t('sale.order_no')}</TableHead>
+                      <TableHead>{t('common.time')}</TableHead>
+                      <TableHead>{t('common.operator')}</TableHead>
+                      <TableHead>{t('sale.items')}</TableHead>
+                      <TableHead className="text-right">{t('sale.amount')}</TableHead>
                       <TableHead className="text-right w-16"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -213,16 +257,21 @@ export default function SalesPage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center justify-between">
               <span className="flex items-center gap-2">
-                <ShoppingCart className="size-4" />购物车
+                <ShoppingCart className="size-4" />{t('sale.cart')}
               </span>
               <Badge variant="muted" className="tabular">{cart.length}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {cart.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-6 text-center">购物车为空</p>
+              <p className="text-sm text-muted-foreground py-6 text-center">{t('sale.cart_empty')}</p>
             ) : cart.map((l) => (
-              <div key={l.book.id} className="flex items-center gap-2 pb-3 border-b last:border-b-0 last:pb-0">
+              <div
+                key={l.book.id}
+                className={`flex items-center gap-2 pb-3 border-b last:border-b-0 last:pb-0 ${
+                  errorBookId === l.book.id ? 'bg-destructive/10 -mx-3 px-3 rounded' : ''
+                }`}
+              >
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate">{l.book.title}</div>
                   <div className="text-xs text-muted-foreground tabular">
@@ -245,16 +294,16 @@ export default function SalesPage() {
             ))}
 
             {cart.length > 0 && (
-              <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="客户备注 (选填)" />
+              <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('sale.customer_note')} maxLength={100} />
             )}
           </CardContent>
           <CardFooter className="flex-col gap-3 items-stretch border-t pt-4">
             <div className="flex items-baseline justify-between">
-              <span className="text-sm text-muted-foreground">合计</span>
+              <span className="text-sm text-muted-foreground">{t('sale.total')}</span>
               <span className="font-mono font-semibold text-2xl">{formatCurrency(cartTotal)}</span>
             </div>
             <Button className="w-full" size="lg" disabled={cart.length === 0 || submitting} loading={submitting} onClick={checkout}>
-              结账
+              {t('sale.checkout')}
             </Button>
           </CardFooter>
         </Card>

@@ -31,10 +31,13 @@ export const useLocale = create<LocaleState>()(
 );
 
 function get(obj: unknown, path: string): string | undefined {
-  return path.split('.').reduce<unknown>(
+  const result = path.split('.').reduce<unknown>(
     (acc, key) => (acc && typeof acc === 'object' && key in (acc as object) ? (acc as Record<string, unknown>)[key] : undefined),
     obj,
-  ) as string | undefined;
+  );
+  // E5: 类型守卫. 不慎传入 'purchase.status' 这种"指向对象的 key" 时,
+  //     返回 undefined 而非渲染 [object Object] 到 DOM.
+  return typeof result === 'string' ? result : undefined;
 }
 
 export function useT() {

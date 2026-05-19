@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     BookNook · 重置数据库 (drop + re-create + seed)
 #>

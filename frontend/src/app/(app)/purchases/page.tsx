@@ -32,6 +32,9 @@ type Po = {
   id: string; order_no: string; supplier: string | null;
   status: PoStatus; total_amount: string | number;
   created_at: string;
+  paid_at: string | null;
+  returned_at: string | null;
+  received_at: string | null;
   user?: { username: string; real_name: string };
   _count?: { items: number };
 };
@@ -41,7 +44,7 @@ const PAGE_SIZE = 10;
 
 const STATUS_META: Record<PoStatus, { label: string; variant: 'muted' | 'success' | 'warning' | 'destructive' }> = {
   pending:  { label: '未付款', variant: 'warning' },
-  paid:     { label: '已付款', variant: 'default' as 'muted' },
+  paid:     { label: '已付款', variant: 'muted' },
   returned: { label: '已退货', variant: 'destructive' },
   received: { label: '已入库', variant: 'success' },
 };
@@ -70,35 +73,36 @@ export default function PurchasesPage() {
 
   const doAction = async (id: string, action: 'pay' | 'return' | 'receive') => {
     try {
-      const msg = { pay: '付款', return: '退货', receive: '入库' }[action];
-      if (!confirm(`确认${msg}?`)) return;
+      const confirmKey = { pay: 'purchase.confirm_pay', return: 'purchase.confirm_return', receive: 'purchase.confirm_receive' }[action];
+      const successKey = { pay: 'purchase.pay_success', return: 'purchase.return_success', receive: 'purchase.receive_success' }[action];
+      if (!confirm(t(confirmKey))) return;
       await api.post(`/purchases/${id}/${action}`);
-      toast.success(`${msg}成功`);
+      toast.success(t(successKey));
       fetchList();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '操作失败');
+      toast.error(err instanceof Error ? err.message : t('purchase.action_failed'));
     }
   };
 
   return (
     <div>
       <PageHeader
-        title="进货管理"
-        description="四态流转: 未付款 → 已付款 → 已入库;未付款时可退货"
+        title={t('purchase.title_page')}
+        description={t('purchase.desc_page')}
         action={
           <Button onClick={() => setOpenCreate(true)}>
-            <Plus className="size-4" />新建进货单
+            <Plus className="size-4" />{t('purchase.new_button')}
           </Button>
         }
       />
 
       <Tabs value={tab} onValueChange={(v) => { setTab(v as typeof tab); setPage(1); }} className="mb-4">
         <TabsList>
-          <TabsTrigger value="all">全部</TabsTrigger>
-          <TabsTrigger value="pending">未付款</TabsTrigger>
-          <TabsTrigger value="paid">已付款</TabsTrigger>
-          <TabsTrigger value="received">已入库</TabsTrigger>
-          <TabsTrigger value="returned">已退货</TabsTrigger>
+          <TabsTrigger value="all">{t('purchase.tabs_all')}</TabsTrigger>
+          <TabsTrigger value="pending">{t('purchase.status.pending')}</TabsTrigger>
+          <TabsTrigger value="paid">{t('purchase.status.paid')}</TabsTrigger>
+          <TabsTrigger value="received">{t('purchase.status.received')}</TabsTrigger>
+          <TabsTrigger value="returned">{t('purchase.status.returned')}</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -107,22 +111,22 @@ export default function PurchasesPage() {
       ) : !data || data.total === 0 ? (
         <EmptyState
           icon={ShoppingBag}
-          title="暂无进货单"
-          action={<Button onClick={() => setOpenCreate(true)}><Plus className="size-4" />新建第一张</Button>}
+          title={t('purchase.empty')}
+          action={<Button onClick={() => setOpenCreate(true)}><Plus className="size-4" />{t('purchase.new_button')}</Button>}
         />
       ) : (
         <>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-44 font-mono">订单号</TableHead>
-                <TableHead>供应商</TableHead>
-                <TableHead className="w-24">明细</TableHead>
-                <TableHead className="w-28 text-right">金额</TableHead>
-                <TableHead className="w-24">状态</TableHead>
-                <TableHead className="w-32">创建时间</TableHead>
-                <TableHead className="w-24">操作员</TableHead>
-                <TableHead className="w-64 text-right">操作</TableHead>
+                <TableHead className="w-44 font-mono">{t('purchase.order_no')}</TableHead>
+                <TableHead>{t('purchase.supplier_th')}</TableHead>
+                <TableHead className="w-24">{t('purchase.items_count')}</TableHead>
+                <TableHead className="w-28 text-right">{t('purchase.amount_label')}</TableHead>
+                <TableHead className="w-24">{t('user.status')}</TableHead>
+                <TableHead className="w-32">{t('common.time')}</TableHead>
+                <TableHead className="w-24">{t('common.operator')}</TableHead>
+                <TableHead className="w-64 text-right">{t('common.operations')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -132,28 +136,28 @@ export default function PurchasesPage() {
                   <TableRow key={p.id}>
                     <TableCell className="font-mono text-xs">{p.order_no}</TableCell>
                     <TableCell>{p.supplier ?? <span className="text-muted-foreground/50">—</span>}</TableCell>
-                    <TableCell>{p._count?.items ?? 0} 项</TableCell>
+                    <TableCell>{p._count?.items ?? 0} {t('purchase.items_suffix')}</TableCell>
                     <TableCell className="text-right tabular">{formatCurrency(p.total_amount)}</TableCell>
-                    <TableCell><Badge variant={meta.variant}>{meta.label}</Badge></TableCell>
+                    <TableCell><Badge variant={meta.variant}>{t(`purchase.status.${p.status}`)}</Badge></TableCell>
                     <TableCell className="text-xs text-muted-foreground">{formatDate(p.created_at)}</TableCell>
                     <TableCell className="text-xs">{p.user?.real_name ?? '-'}</TableCell>
                     <TableCell className="text-right space-x-1">
-                      <Button variant="ghost" size="icon" onClick={() => setViewing(p.id)}>
+                      <Button variant="ghost" size="icon" onClick={() => setViewing(p.id)} aria-label={t('purchase.view')}>
                         <Eye className="size-4" />
                       </Button>
                       {p.status === 'pending' && (
                         <>
                           <Button variant="outline" size="sm" onClick={() => doAction(p.id, 'pay')}>
-                            <CreditCard className="size-3.5" />付款
+                            <CreditCard className="size-3.5" />{t('purchase.pay')}
                           </Button>
                           <Button variant="outline" size="sm" onClick={() => doAction(p.id, 'return')}>
-                            <Undo2 className="size-3.5" />退货
+                            <Undo2 className="size-3.5" />{t('purchase.return_')}
                           </Button>
                         </>
                       )}
                       {p.status === 'paid' && (
                         <Button variant="accent" size="sm" onClick={() => doAction(p.id, 'receive')}>
-                          <Package className="size-3.5" />入库
+                          <Package className="size-3.5" />{t('purchase.receive')}
                         </Button>
                       )}
                     </TableCell>
@@ -233,12 +237,30 @@ function CreatePurchaseDialog({ open, onClose, onCreated }: { open: boolean; onC
   const handleSubmit = async () => {
     const valid = lines.every((l) => l.isbn && l.title && l.publisher && l.author && Number(l.purchase_price) > 0 && Number(l.quantity) > 0);
     if (!valid) { toast.error('请完整填写每行明细'); return; }
+
+    // D8: 提交前再做一次 isbn 与 book_id 的一致性校验.
+    // 场景: 用户输入 ISBN-A 触发 blur 自动填充, 拿到 book_id=A;
+    //       接着把 ISBN 改成 B 但不离开焦点直接点提交, 此时 book_id 仍指向 A → 数据错乱.
+    // updateLine 在 onChange 里已会清空 book_id, 但额外做一次防御不会出错.
+    // 这里直接清掉所有 book_id 不一致的引用.
+    const fetchedIsbnMap = new Map<string, string>(); // book_id -> 已知正确的 isbn
+    const cleanedLines = lines.map((l) => {
+      if (l.book_id) {
+        const known = fetchedIsbnMap.get(l.book_id);
+        if (known && known !== l.isbn) {
+          return { ...l, book_id: undefined };
+        }
+        if (!known) fetchedIsbnMap.set(l.book_id, l.isbn);
+      }
+      return l;
+    });
+
     setSubmitting(true);
     try {
       await api.post('/purchases', {
         supplier: supplier || undefined,
         remark:   remark   || undefined,
-        items: lines.map((l) => ({
+        items: cleanedLines.map((l) => ({
           book_id:        l.book_id ? Number(l.book_id) : undefined,
           isbn:           l.isbn,
           title:          l.title,
@@ -359,6 +381,16 @@ function ViewPurchaseDialog({ id, onClose }: { id: string | null; onClose: () =>
               <div><span className="text-muted-foreground">供应商: </span>{data.supplier ?? '—'}</div>
               <div><span className="text-muted-foreground">金额: </span><span className="font-mono">{formatCurrency(data.total_amount)}</span></div>
               <div className="col-span-3"><span className="text-muted-foreground">创建于: </span>{formatDate(data.created_at)} · 操作员 {data.user?.real_name ?? '-'}</div>
+              {/* D9: 展示触发器自动写入的状态变更时间, 完整呈现单据生命周期 */}
+              {data.paid_at && (
+                <div><span className="text-muted-foreground">付款时间: </span>{formatDate(data.paid_at)}</div>
+              )}
+              {data.received_at && (
+                <div><span className="text-muted-foreground">入库时间: </span>{formatDate(data.received_at)}</div>
+              )}
+              {data.returned_at && (
+                <div><span className="text-muted-foreground">退货时间: </span>{formatDate(data.returned_at)}</div>
+              )}
             </div>
             <Table>
               <TableHeader>

@@ -6,6 +6,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import pinoHttp from 'pino-http';
+import helmet from 'helmet';
 
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
@@ -27,6 +28,13 @@ import reportsRouter      from './modules/reports/reports.controller.js';
 export function buildApp() {
   const app = express();
 
+  // C5: helmet 提供 X-Content-Type-Options / X-Frame-Options / HSTS 等安全头
+  //     默认 CSP 偏严, 后端是纯 API 服务无需返回 HTML, 沿用默认即可
+  app.use(helmet({
+    contentSecurityPolicy: false, // API-only 服务无需 CSP, 前端在 Next.js 上自己处理
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // 允许前端跨域读取 (Excel/PDF 导出)
+  }));
+
   app.use(
     pinoHttp({
       logger,
@@ -39,7 +47,9 @@ export function buildApp() {
       credentials: true,
     }),
   );
-  app.use(express.json({ limit: '2mb' }));
+  // body 上限 256kb: 业务无文件上传, 嵌套 items 也不过几十 KB,
+  // 缩小后可降低 JSON 解析 CPU 攻击面 (C10)
+  app.use(express.json({ limit: '256kb' }));
   app.use(cookieParser());
   app.set('trust proxy', 1);
 

@@ -11,8 +11,10 @@ import PDFDocument from 'pdfkit';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
+import { z } from 'zod';
 import { prisma } from '../../config/db.js';
 import { logger } from '../../config/logger.js';
+import { validate } from '../../middlewares/validate.js';
 
 const router = Router();
 
@@ -23,8 +25,17 @@ function parseDate(str: string | undefined): Date | undefined {
   return str ? new Date(str) : undefined;
 }
 
+// C8: 所有报表 query 参数走 zod 校验, 防止注入 Prisma 不认识的 status 导致 500.
+const dateRangeSchema = z.object({
+  from: z.string().datetime().optional(),
+  to:   z.string().datetime().optional(),
+});
+const purchaseExportSchema = z.object({
+  status: z.enum(['pending', 'paid', 'returned', 'received']).optional(),
+});
+
 // ─────────── /reports/sales.xlsx ────────────────────────────────────────────
-router.get('/sales.xlsx', async (req, res) => {
+router.get('/sales.xlsx', validate('query', dateRangeSchema), async (req, res) => {
   const from = parseDate(req.query.from as string | undefined);
   const to   = parseDate(req.query.to   as string | undefined);
 
@@ -95,10 +106,10 @@ router.get('/sales.xlsx', async (req, res) => {
 });
 
 // ─────────── /reports/purchases.xlsx ────────────────────────────────────────
-router.get('/purchases.xlsx', async (req, res) => {
-  const status = req.query.status as string | undefined;
+router.get('/purchases.xlsx', validate('query', purchaseExportSchema), async (req, res) => {
+  const { status } = req.query as unknown as z.infer<typeof purchaseExportSchema>;
   const orders = await prisma.purchaseOrder.findMany({
-    where: status ? { status: status as 'pending' } : {},
+    where: status ? { status } : {},
     orderBy: { created_at: 'desc' },
     include: { user: true, items: true },
   });
@@ -145,7 +156,7 @@ router.get('/purchases.xlsx', async (req, res) => {
 });
 
 // ─────────── /reports/finance.xlsx ──────────────────────────────────────────
-router.get('/finance.xlsx', async (req, res) => {
+router.get('/finance.xlsx', validate('query', dateRangeSchema), async (req, res) => {
   const from = parseDate(req.query.from as string | undefined);
   const to   = parseDate(req.query.to   as string | undefined);
   const rows = await prisma.transaction.findMany({
@@ -198,7 +209,7 @@ router.get('/finance.xlsx', async (req, res) => {
 });
 
 // ─────────── /reports/finance.pdf  月度财务 PDF (含汇总) ───────────────────
-router.get('/finance.pdf', async (req, res) => {
+router.get('/finance.pdf', validate('query', dateRangeSchema), async (req, res) => {
   const from = parseDate(req.query.from as string | undefined);
   const to   = parseDate(req.query.to   as string | undefined);
 

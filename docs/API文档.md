@@ -9,7 +9,9 @@ tags:
 # BookNook · REST API 文档
 
 > 基础地址 `http://localhost:4000/api`
-> 鉴权 `Authorization: Bearer <JWT>` 或 HttpOnly Cookie `booknook_token`
+>
+> **鉴权 (v1.1 起)**: 全程通过 **HttpOnly Cookie `booknook_token`** (SameSite=strict, path=/api). 客户端只需 `credentials: 'include'` 即可, **不需要也无法**手动设置 Authorization (响应 body 不再含 token, 这是 v1.1 移除的 XSS 防御).
+>
 > 响应统一格式 `{ code: 0 | <number>, data: T | null, message: string }`
 
 ---
@@ -17,6 +19,8 @@ tags:
 ## 一、认证 `/auth`
 
 ### `POST /auth/login`
+
+> 限速 20 次/15min/IP, 超过返回 `429` (code=4029).
 
 **Body**:
 ```json
@@ -28,7 +32,6 @@ tags:
 {
   "code": 0,
   "data": {
-    "token": "eyJhbGc...",
     "user": {
       "id": "1",
       "username": "super",
@@ -43,7 +46,9 @@ tags:
 }
 ```
 
-服务端会在响应头里 set `booknook_token` HttpOnly Cookie。
+服务端通过 `Set-Cookie: booknook_token=<JWT>; HttpOnly; SameSite=Strict; Path=/api` 下发会话凭据.
+
+> 注意: v1.1 起响应 body **不再含 `token` 字段** (XSS 防御). 客户端只需保留浏览器 cookie 即可, 后续请求带 `credentials: 'include'` 让浏览器自动携带.
 
 ### `POST /auth/logout`
 清除 Cookie,返回 `{ code:0, data:null, message:'已登出' }`。
@@ -363,39 +368,45 @@ Top10 畅销书:
 
 | HTTP | code | 说明 |
 |------|------|------|
-| 400 | 4000 | 请求参数错误 / 业务规则不通过 |
-| 401 | 4001 | 未登录 / Token 过期 |
-| 403 | 4003 | 权限不足 |
-| 404 | 4004 | 资源不存在 |
-| 409 | 4009 | 冲突 (例:用户名已存在) |
+| 400 | 4000 | 请求参数错误 / 业务规则不通过 / `BigInt('abc')` 类语法错 |
+| 401 | 4001 | 未登录 / Token 过期 / 账号已被停用 (is_active=false 实时校验) |
+| 403 | 4003 | 权限不足 (非超管访问超管接口) |
+| 404 | 4004 | 资源不存在 (含 Prisma `P2025`) |
+| 409 | 4009 | 冲突 (例: 用户名已存在; Prisma `P2002` 唯一约束) |
 | 422 | 4220 | Zod 校验失败 |
-| 500 | 5000 | 服务器内部错误 |
+| 429 | 4029 | 速率限制触发 (登录 20 次/15min) |
+| 500 | 5000 | 服务器内部错误 (生产环境只返回此通用文案, 开发环境保留原 message) |
 
 错误响应统一:
 ```json
 { "code": 4001, "data": null, "message": "请先登录" }
 ```
 
+> v1.1 增强: Prisma 已知错误码 (P2002 / P2003 / P2025) 会被映射到合适的 HTTP 状态; `SyntaxError` (如 BigInt('abc')) 映射到 400; 生产环境兜底 message 脱敏.
+
 ---
 
 ## 十二、cURL 速查
 
+v1.1 起 token 只通过 HttpOnly Cookie 下发, 用 `-c cookies.txt` 保存 + `-b cookies.txt` 携带:
+
 ```bash
-# 登录拿 token
-TOKEN=$(curl -s -X POST http://localhost:4000/api/auth/login \
+# 1. 登录, cookie 写到 cookies.txt
+curl -s -c cookies.txt -X POST http://localhost:4000/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"super","password":"Admin@2026"}' \
-  | python -c "import sys,json; print(json.load(sys.stdin)['data']['token'])")
+  -d '{"username":"super","password":"Admin@2026"}'
 
-# 查询红楼梦
-curl -H "Authorization: Bearer $TOKEN" \
-  'http://localhost:4000/api/books?q=红楼&field=title'
+# 2. 携带 cookie 查询红楼梦
+curl -b cookies.txt 'http://localhost:4000/api/books?q=红楼&field=title'
 
-# 看 Dashboard
-curl -H "Authorization: Bearer $TOKEN" \
-  'http://localhost:4000/api/analytics/dashboard'
+# 3. 看 Dashboard
+curl -b cookies.txt 'http://localhost:4000/api/analytics/dashboard'
 
-# 导出销售 Excel
-curl -O -J -H "Authorization: Bearer $TOKEN" \
-  'http://localhost:4000/api/reports/sales.xlsx'
+# 4. 导出销售 Excel
+curl -b cookies.txt -O -J 'http://localhost:4000/api/reports/sales.xlsx'
+
+# 5. 登出 (清除 cookie)
+curl -b cookies.txt -c cookies.txt -X POST 'http://localhost:4000/api/auth/logout'
 ```
+
+如果你的工具链需要程序化拿 token, 推荐用 Python `http.cookiejar.CookieJar` 维护会话 (参考 `scripts/smoke-test.py`).

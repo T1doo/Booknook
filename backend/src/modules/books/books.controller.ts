@@ -4,7 +4,7 @@
  *  - 信息修改: 书名 / 作者 / 出版社 / 零售价格 / 预警阈值
  *  - 删除 (软删除策略: 库存为 0 才允许)
  */
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../config/db.js';
 import { ok, created, Err } from '../../utils/http.js';
@@ -49,13 +49,17 @@ router.get('/', validate('query', listQuery), async (req, res) => {
       case 'publisher':
         where.publisher = { contains: kw, mode: 'insensitive' };
         break;
-      default:
-        where.OR = [
-          { isbn: { equals: kw } },
+      default: {
+        // D3: 'all' 模式如果关键词是纯数字, 也尝试按 ID 匹配
+        const ors: Record<string, unknown>[] = [
+          { isbn:      { equals: kw } },
           { title:     { contains: kw, mode: 'insensitive' } },
           { author:    { contains: kw, mode: 'insensitive' } },
           { publisher: { contains: kw, mode: 'insensitive' } },
         ];
+        if (/^\d+$/.test(kw)) ors.push({ id: BigInt(kw) });
+        where.OR = ors;
+      }
     }
   }
 
@@ -94,12 +98,13 @@ router.get('/:id', async (req, res) => {
 });
 
 // ──────────── PATCH /books/:id ──────────────────────────────────────────────
+// F7: 加 ISBN 格式校验和 retail_price 上限, 防止误输入或恶意值
 const updateSchema = z.object({
   title:               z.string().min(1).max(200).optional(),
   author:              z.string().min(1).max(100).optional(),
   publisher:           z.string().min(1).max(100).optional(),
-  retail_price:        z.coerce.number().nonnegative().optional(),
-  low_stock_threshold: z.coerce.number().int().nonnegative().optional(),
+  retail_price:        z.coerce.number().nonnegative().max(99999.99).optional(),
+  low_stock_threshold: z.coerce.number().int().nonnegative().max(10000).optional(),
   cover_url:           z.string().url().optional().or(z.literal('')),
   category:            z.string().max(50).optional(),
 });
@@ -108,6 +113,16 @@ router.patch('/:id', validate('body', updateSchema), async (req, res) => {
   const id = BigInt(req.params.id as string);
   const book = await prisma.book.findUnique({ where: { id } });
   if (!book) throw Err.notFound('书籍不存在');
+
+  // C14: 把改动前的关键字段快照塞进 req, 由 audit 中间件合并写入 operation_logs.payload.
+  //      重点关注零售价/作者/书名/出版社等业务关键字段, 留下完整变更前后留痕.
+  (req as Request & { auditBefore?: Record<string, unknown> }).auditBefore = {
+    title:        book.title,
+    author:       book.author,
+    publisher:    book.publisher,
+    retail_price: book.retail_price.toString(),
+    category:     book.category,
+  };
 
   const updated = await prisma.book.update({
     where: { id },
@@ -130,14 +145,15 @@ router.delete('/:id', async (req, res) => {
 });
 
 // ──────────── POST /books (直接新增已有库存书籍,补充用) ────────────────────
+// F7: ISBN 用 10/13 位数字校验, retail_price/threshold 加上限
 const createSchema = z.object({
-  isbn:                z.string().min(10).max(20),
+  isbn:                z.string().regex(/^\d{10}(\d{3})?$/, 'ISBN 应为 10 或 13 位数字'),
   title:               z.string().min(1).max(200),
   author:              z.string().min(1).max(100),
   publisher:           z.string().min(1).max(100),
-  retail_price:        z.coerce.number().nonnegative(),
-  stock:               z.coerce.number().int().nonnegative().default(0),
-  low_stock_threshold: z.coerce.number().int().nonnegative().default(5),
+  retail_price:        z.coerce.number().nonnegative().max(99999.99),
+  stock:               z.coerce.number().int().nonnegative().max(1_000_000).default(0),
+  low_stock_threshold: z.coerce.number().int().nonnegative().max(10000).default(5),
   category:            z.string().max(50).optional(),
   cover_url:           z.string().url().optional(),
 });
