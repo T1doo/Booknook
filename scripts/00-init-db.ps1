@@ -28,6 +28,11 @@ try { chcp 65001 | Out-Null } catch {}
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
+# 关键: 告诉 psql "我发给你的 SQL 是 UTF-8". 否则中文 Windows 上 psql 的
+# client_encoding 默认跟随系统区域(GBK), 会把 UTF-8 文件里的中文字节当成 GBK
+# 解码失败, 报 "编码 GBK 的字符 0x.. 在编码 UTF8 没有相对应值".
+$env:PGCLIENTENCODING = 'UTF8'
+
 function Write-Section($t) {
     Write-Host ""
     Write-Host ("=" * 70) -ForegroundColor DarkYellow
