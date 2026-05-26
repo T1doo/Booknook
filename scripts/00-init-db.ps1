@@ -24,7 +24,12 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # 把控制台 + .NET 输出统一切到 UTF-8, 否则中文 Windows (gb2312) 下显示 psql 中文输出会乱码
-try { chcp 65001 | Out-Null } catch {}
+try {
+    chcp 65001 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host '[WARN] chcp 65001 failed, Chinese text may display incorrectly' -ForegroundColor Yellow
+    }
+} catch {}
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -77,10 +82,14 @@ Write-Section "1. 重建数据库 $DbName"
 $baseArgs = @('-h', $PgHost, '-p', "$PgPort", '-U', $PgUser, '-d', 'postgres',
               '-v', 'ON_ERROR_STOP=1', '-q')
 
-& $psql @baseArgs -c "DROP DATABASE IF EXISTS $DbName;"        | Out-Null
-& $psql @baseArgs -c "CREATE DATABASE $DbName ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0;" | Out-Null
+& $psql @baseArgs -c "DROP DATABASE IF EXISTS $DbName;"
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "[ERROR] 数据库创建失败" -ForegroundColor Red
+    Write-Host "[ERROR] DROP DATABASE 失败, 请检查密码与连接" -ForegroundColor Red
+    exit 1
+}
+& $psql @baseArgs -c "CREATE DATABASE $DbName ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0;"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[ERROR] CREATE DATABASE 失败" -ForegroundColor Red
     exit 1
 }
 Write-Host "[OK] 数据库 $DbName 已重建"

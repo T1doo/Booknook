@@ -22,6 +22,6 @@ const app = buildApp();
 
 app.listen(env.PORT, () => {
   logger.info(
-    `🌿 BookNook Backend ready on http://localhost:${env.PORT} (${env.NODE_ENV})`,
+    `[OK] BookNook Backend ready on http://localhost:${env.PORT} (${env.NODE_ENV})`,
   );
 });

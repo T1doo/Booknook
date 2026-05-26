@@ -164,6 +164,7 @@ def main():
     # 14. C12: 不能停用最后一个超管 (super 本人是唯一超管, 试停 super)
     code, r = super_s.req('DELETE', f'/api/users/{user["id"]}')
     # super 是自己 → 拒绝 ('不能删除自己')
+    assert code in (400, 403), f'停用自己应被拒, 得到 {code}'
     print(f"[14] ✓ 停用自己被拒: code={code}, msg={r.get('message','')[:30]}")
 
     # 15. 库存预警 (调阈值触发)

@@ -26,6 +26,11 @@
 --    4. 全部时间戳使用 TIMESTAMPTZ + DEFAULT now(),避免时区歧义。
 -- ============================================================================
 
+-- 抑制 DROP IF EXISTS / TRUNCATE CASCADE 等发出的 NOTICE 中文消息.
+-- 中文 Windows 的 psql 客户端会把这些 NOTICE 按 GBK 解码 UTF-8 字节, 输出乱码.
+-- WARNING 及以上级别仍会显示, 不影响真错误的可见性.
+SET client_min_messages TO warning;
+
 BEGIN;
 
 -- ---------------------------------------------------------------------------

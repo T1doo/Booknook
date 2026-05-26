@@ -11,3 +11,4 @@ param(
 )
 
 & "$PSScriptRoot\00-init-db.ps1" -PgHost $PgHost -PgPort $PgPort -PgUser $PgUser -DbName $DbName
+exit $LASTEXITCODE
