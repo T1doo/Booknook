@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { ScrollText, Search } from 'lucide-react';
 
 import { Card, CardContent } from '@/components/ui/card';
@@ -134,9 +134,9 @@ function LogsPageInner() {
                 const isOpen = expanded === log.id;
                 const hasPayload = log.payload && Object.keys(log.payload).length > 0;
                 return (
-                  <>
+                  // D13: 用显式 Fragment 持有 key, 否则 React 警告 "Each child in a list should have a unique key prop"
+                  <Fragment key={log.id}>
                     <TableRow
-                      key={log.id}
                       className={hasPayload ? 'cursor-pointer hover:bg-muted/40' : ''}
                       onClick={() => hasPayload && setExpanded(isOpen ? null : log.id)}
                     >
@@ -160,7 +160,7 @@ function LogsPageInner() {
                       <TableCell className="font-mono text-xs text-muted-foreground">{log.ip ?? '—'}</TableCell>
                     </TableRow>
                     {isOpen && hasPayload && (
-                      <TableRow key={`${log.id}-detail`}>
+                      <TableRow>
                         <TableCell colSpan={7} className="bg-muted/30">
                           <pre className="text-xs overflow-x-auto whitespace-pre-wrap break-all">
                             {JSON.stringify(log.payload, null, 2)}
@@ -168,7 +168,7 @@ function LogsPageInner() {
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </Fragment>
                 );
               })}
             </TableBody>
