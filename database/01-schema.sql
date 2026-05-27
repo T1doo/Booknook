@@ -67,6 +67,7 @@ DROP FUNCTION IF EXISTS fn_purchase_status_change()            CASCADE;
 DROP FUNCTION IF EXISTS fn_purchase_after_receive()            CASCADE;
 DROP FUNCTION IF EXISTS fn_audit_log()                         CASCADE;
 DROP FUNCTION IF EXISTS fn_books_low_stock_check(BIGINT)       CASCADE;
+DROP FUNCTION IF EXISTS fn_books_after_update_check_alert()    CASCADE;
 DROP FUNCTION IF EXISTS fn_set_updated_at()                    CASCADE;
 
 -- ---------------------------------------------------------------------------
@@ -566,6 +567,32 @@ BEGIN
     END IF;
 END
 $$ LANGUAGE plpgsql;
+
+-- ----------------------------------------------------------------------------
+-- 9.5 books 表统一预警评估触发器 (兜底, 防 PATCH /books 漏调评估)
+--
+--     任何 stock 或 low_stock_threshold 的 UPDATE 都自动触发预警评估.
+--     这样无论改阈值的路径 (PATCH /books/:id / PATCH /alerts/threshold/:bookId)、
+--     还是 stock 变动的路径 (销售触发器 / 进货入库 / psql 直连),
+--     预警状态都自动维护, 不需要每个 controller 显式调 fn_books_low_stock_check.
+--
+--     WHEN 子句保证只在相关字段真变了时才执行 (其他字段如 retail_price 变了不触发).
+--
+--     注: fn_sales_after_insert 已有显式 PERFORM 调用, 保留无害 (幂等 + 防御性).
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_books_after_update_check_alert() RETURNS TRIGGER AS $$
+BEGIN
+    PERFORM fn_books_low_stock_check(NEW.id);
+    RETURN NEW;
+END
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_books_after_update_check_alert
+    AFTER UPDATE OF stock, low_stock_threshold ON public.books
+    FOR EACH ROW
+    WHEN (OLD.stock IS DISTINCT FROM NEW.stock
+       OR OLD.low_stock_threshold IS DISTINCT FROM NEW.low_stock_threshold)
+    EXECUTE FUNCTION fn_books_after_update_check_alert();
 
 COMMIT;
 
