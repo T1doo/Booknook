@@ -55,7 +55,7 @@ router.get('/:id', async (req, res) => {
   const po = await prisma.purchaseOrder.findUnique({
     where: { id },
     include: {
-      items: { include: { book: { select: { id: true, title: true, stock: true } } } },
+      items: { include: { book: { select: { id: true, title: true, stock: true, retail_price: true } } } },
       user:  { select: { username: true, real_name: true } },
     },
   });

@@ -26,7 +26,7 @@ type PoItem = {
   id: string; book_id: string | null; isbn: string; title: string; publisher: string; author: string;
   purchase_price: string | number; quantity: number; retail_price: string | number | null;
   subtotal: string | number;
-  book?: { id: string; title: string; stock: number } | null;
+  book?: { id: string; title: string; stock: number; retail_price: string | number } | null;
 };
 type Po = {
   id: string; order_no: string; supplier: string | null;
@@ -57,6 +57,7 @@ export default function PurchasesPage() {
   const [loading, setLoading] = useState(false);
   const [openCreate, setOpenCreate] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
+  const [receivingId, setReceivingId] = useState<string | null>(null);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -156,7 +157,7 @@ export default function PurchasesPage() {
                         </>
                       )}
                       {p.status === 'paid' && (
-                        <Button variant="accent" size="sm" onClick={() => doAction(p.id, 'receive')}>
+                        <Button variant="accent" size="sm" onClick={() => setReceivingId(p.id)}>
                           <Package className="size-3.5" />{t('purchase.receive')}
                         </Button>
                       )}
@@ -178,6 +179,12 @@ export default function PurchasesPage() {
       />
 
       <ViewPurchaseDialog id={viewing} onClose={() => setViewing(null)} />
+
+      <ReceiveDialog
+        id={receivingId}
+        onClose={() => setReceivingId(null)}
+        onReceived={() => { setReceivingId(null); fetchList(); }}
+      />
     </div>
   );
 }
@@ -416,6 +423,174 @@ function ViewPurchaseDialog({ id, onClose }: { id: string | null; onClose: () =>
             </Table>
           </>
         )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── 入库对话框 ──────────────────────────────────────────────────────────
+// PPT 要求: 新书首次入库必须填零售价. 已有书的零售价保持不变 (业务现实: 书的定价是物理属性).
+// 后端 POST /purchases/:id/receive 接收 retail_prices 数组, 只对新书 (book_id IS NULL) 必填.
+function ReceiveDialog({ id, onClose, onReceived }: {
+  id: string | null;
+  onClose: () => void;
+  onReceived: () => void;
+}) {
+  const [data, setData] = useState<Po & { items: PoItem[] } | null>(null);
+  const [newPrices, setNewPrices] = useState<Record<string, string>>({}); // key = item_id
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!id) { setData(null); setNewPrices({}); return; }
+    api.get<Po & { items: PoItem[] }>(`/purchases/${id}`).then((d) => {
+      setData(d);
+      // 默认把新书零售价预填为「进货价 × 1.5」, 操作员可改
+      const init: Record<string, string> = {};
+      d.items.forEach((it) => {
+        if (!it.book_id) {
+          init[it.id] = (Number(it.purchase_price) * 1.5).toFixed(2);
+        }
+      });
+      setNewPrices(init);
+    }).catch((e) => toast.error(e instanceof Error ? e.message : '加载进货单详情失败'));
+  }, [id]);
+
+  const newItems = data?.items.filter((it) => !it.book_id) ?? [];
+  const oldItems = data?.items.filter((it) => !!it.book_id) ?? [];
+
+  const allFilled = newItems.every((it) => {
+    const v = Number(newPrices[it.id]);
+    return Number.isFinite(v) && v > 0;
+  });
+
+  const submit = async () => {
+    if (!id) return;
+    if (newItems.length > 0 && !allFilled) {
+      toast.error('请为所有新书填写零售价 (大于 0)');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const retail_prices = newItems.map((it) => ({
+        item_id: Number(it.id),
+        retail_price: Number(newPrices[it.id]),
+      }));
+      await api.post(`/purchases/${id}/receive`,
+        retail_prices.length > 0 ? { retail_prices } : {});
+      toast.success('入库成功');
+      onReceived();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '入库失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={!!id} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>入库 · {data?.order_no ?? ''}</DialogTitle>
+          <DialogDescription>
+            新书首次入库需要填零售价。已有书的零售价保持不变, 如需调整请到「库存图书」页面手动编辑。
+          </DialogDescription>
+        </DialogHeader>
+
+        {!data ? <Skeleton className="h-40" /> : (
+          <div className="space-y-4">
+            {newItems.length > 0 && (
+              <div>
+                <div className="text-sm font-medium mb-2 flex items-center gap-2">
+                  🆕 新增书籍
+                  <span className="text-xs text-muted-foreground font-normal">
+                    ({newItems.length} 本, 零售价必填)
+                  </span>
+                </div>
+                <div className="border rounded-md overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-secondary/60 text-xs uppercase tracking-wider text-muted-foreground">
+                      <tr>
+                        <th className="text-left p-2 font-mono w-40">ISBN</th>
+                        <th className="text-left p-2">书名</th>
+                        <th className="text-right p-2 w-20">进货价</th>
+                        <th className="text-right p-2 w-16">数量</th>
+                        <th className="text-right p-2 w-32">
+                          零售价 <span className="text-destructive">*</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {newItems.map((it) => (
+                        <tr key={it.id} className="border-t">
+                          <td className="p-2 font-mono text-xs">{it.isbn}</td>
+                          <td className="p-2">{it.title}</td>
+                          <td className="p-2 text-right tabular">{formatCurrency(it.purchase_price)}</td>
+                          <td className="p-2 text-right tabular">{it.quantity}</td>
+                          <td className="p-1.5">
+                            <Input
+                              className="h-8 text-right tabular"
+                              type="number" min="0" step="0.01"
+                              value={newPrices[it.id] ?? ''}
+                              onChange={(e) => setNewPrices((p) => ({ ...p, [it.id]: e.target.value }))}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  💡 默认按「进货价 × 1.5」预填, 可调整为实际零售价
+                </p>
+              </div>
+            )}
+
+            {oldItems.length > 0 && (
+              <div>
+                <div className="text-sm font-medium mb-2 flex items-center gap-2">
+                  📚 已有书籍
+                  <span className="text-xs text-muted-foreground font-normal">
+                    ({oldItems.length} 本, 沿用现有零售价)
+                  </span>
+                </div>
+                <div className="border rounded-md overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-secondary/60 text-xs uppercase tracking-wider text-muted-foreground">
+                      <tr>
+                        <th className="text-left p-2 font-mono w-40">ISBN</th>
+                        <th className="text-left p-2">书名</th>
+                        <th className="text-right p-2 w-20">进货价</th>
+                        <th className="text-right p-2 w-16">数量</th>
+                        <th className="text-right p-2 w-24">现有零售价</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {oldItems.map((it) => (
+                        <tr key={it.id} className="border-t">
+                          <td className="p-2 font-mono text-xs">{it.isbn}</td>
+                          <td className="p-2">{it.title}</td>
+                          <td className="p-2 text-right tabular">{formatCurrency(it.purchase_price)}</td>
+                          <td className="p-2 text-right tabular">{it.quantity}</td>
+                          <td className="p-2 text-right tabular text-muted-foreground">
+                            {it.book ? formatCurrency(it.book.retail_price) : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          <DialogClose asChild><Button variant="outline">取消</Button></DialogClose>
+          <Button onClick={submit} loading={submitting}
+                  disabled={!data || (newItems.length > 0 && !allFilled)}>
+            确认入库
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
