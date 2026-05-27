@@ -227,7 +227,13 @@ router.get('/finance.pdf', validate('query', dateRangeSchema), async (req, res) 
   res.setHeader('Content-Disposition',
     `attachment; filename="finance-${new Date().toISOString().slice(0,10)}.pdf"`);
 
-  const doc = new PDFDocument({ size: 'A4', margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+  // margins 全设 0: 关闭 PDFKit autoPagination, 完全手动控制布局, 避免画到 y > 791
+  // 的位置时自动新开一页产生空白页. bufferPages: 留到最后回填页码 "第 X / 共 Y 页".
+  const doc = new PDFDocument({
+    size: 'A4',
+    margins: { top: 0, bottom: 0, left: 0, right: 0 },
+    bufferPages: true,
+  });
   doc.pipe(res);
 
   // 中文字体: 按优先级扫描多个候选路径, 找到第一个就用.
@@ -329,8 +335,7 @@ router.get('/finance.pdf', validate('query', dateRangeSchema), async (req, res) 
   doc.moveTo(M, tableTitleY + 20).lineTo(M + W, tableTitleY + 20)
      .strokeColor(C.accent).lineWidth(1).stroke();
 
-  // 表头
-  const headerY = tableTitleY + 28;
+  // 表头列定义 (放外层, 跨页复用)
   const cols: { name: string; x: number; w: number; align?: 'left' | 'right' | 'center' }[] = [
     { name: '时间',     x: M,         w: 100 },
     { name: '类型',     x: M + 100,   w: 40, align: 'center' },
@@ -338,26 +343,43 @@ router.get('/finance.pdf', validate('query', dateRangeSchema), async (req, res) 
     { name: '说明',     x: M + 225,   w: 213 },
     { name: '操作员',   x: M + 438,   w: 57 },
   ];
-  // 表头背景色条 (淡米色)
-  doc.rect(M, headerY - 4, W, 20).fillColor('#fef3c7').fill();
-  doc.fillColor(C.brown).fontSize(9.5);
-  cols.forEach((col) => {
-    doc.text(col.name, col.x + 4, headerY, { width: col.w - 4, align: col.align ?? 'left' });
-  });
-  doc.moveTo(M, headerY + 16).lineTo(M + W, headerY + 16)
-     .strokeColor(C.accent).lineWidth(0.8).stroke();
 
-  // 明细行 (限 35 条, 防溢出单页; 超过提示用 XLSX)
-  const MAX_ROWS = 35;
+  // 表头绘制函数 (第 1 页 + 后续页都用)
+  function drawTableHeader(y: number) {
+    doc.rect(M, y - 4, W, 20).fillColor('#fef3c7').fill();
+    doc.fillColor(C.brown).fontSize(9.5);
+    cols.forEach((col) => {
+      doc.text(col.name, col.x + 4, y, { width: col.w - 4, align: col.align ?? 'left' });
+    });
+    doc.moveTo(M, y + 16).lineTo(M + W, y + 16)
+       .strokeColor(C.accent).lineWidth(0.8).stroke();
+  }
+
+  // 第 1 页表头
+  const headerY = tableTitleY + 28;
+  drawTableHeader(headerY);
+
+  // 明细行 (真正支持多页, 不再限制行数)
   const ROW_H = 17;
-  const startRowY = headerY + 22;
-  const displayed = rows.slice(0, MAX_ROWS);
+  const PAGE_BOTTOM = PAGE_H - 65;  // 页底留 65px 给页脚
+  let rowY = headerY + 22;
 
-  displayed.forEach((r, i) => {
-    const y = startRowY + i * ROW_H;
-    // 斑马纹 (偶数行底色)
+  rows.forEach((r, i) => {
+    // 当前页放不下了, 新开一页
+    if (rowY + ROW_H > PAGE_BOTTOM) {
+      doc.addPage();
+      // 后续页用简化页眉 (不重复展示卡片汇总, 节省空间)
+      doc.fillColor(C.brown).fontSize(14)
+         .text('BookNook · 财务报表  (接上页)', M, 40, { width: W, align: 'center' });
+      doc.moveTo(M, 65).lineTo(M + W, 65)
+         .strokeColor(C.accent).lineWidth(1).stroke();
+      drawTableHeader(80);
+      rowY = 80 + 22;
+    }
+
+    // 斑马纹 (奇数行底色)
     if (i % 2 === 1) {
-      doc.rect(M, y - 3, W, ROW_H).fillColor(C.zebra).fill();
+      doc.rect(M, rowY - 3, W, ROW_H).fillColor(C.zebra).fill();
     }
     const time = r.created_at.toISOString().slice(0, 16).replace('T', ' ');
     const type = r.type === 'income' ? '收入' : '支出';
@@ -365,36 +387,35 @@ router.get('/finance.pdf', validate('query', dateRangeSchema), async (req, res) 
     const typeColor = r.type === 'income' ? C.income : C.expense;
 
     doc.fillColor(C.muted).fontSize(8.5)
-       .text(time, cols[0].x + 4, y, { width: cols[0].w - 4 });
+       .text(time, cols[0].x + 4, rowY, { width: cols[0].w - 4 });
     doc.fillColor(typeColor).fontSize(8.5)
-       .text(type, cols[1].x, y, { width: cols[1].w, align: 'center' });
+       .text(type, cols[1].x, rowY, { width: cols[1].w, align: 'center' });
     doc.fillColor(typeColor).fontSize(9)
-       .text(amt, cols[2].x, y, { width: cols[2].w - 4, align: 'right' });
+       .text(amt, cols[2].x, rowY, { width: cols[2].w - 4, align: 'right' });
     doc.fillColor(C.text).fontSize(8.5)
-       .text(r.description, cols[3].x + 4, y, { width: cols[3].w - 4, ellipsis: true });
+       .text(r.description, cols[3].x + 4, rowY, { width: cols[3].w - 4, ellipsis: true });
     doc.fillColor(C.muted).fontSize(8.5)
-       .text(r.user?.real_name ?? '-', cols[4].x, y, { width: cols[4].w });
+       .text(r.user?.real_name ?? '-', cols[4].x, rowY, { width: cols[4].w });
+
+    rowY += ROW_H;
   });
 
   // 表底分隔线
-  const tableBottom = startRowY + displayed.length * ROW_H + 4;
-  doc.moveTo(M, tableBottom).lineTo(M + W, tableBottom)
+  doc.moveTo(M, rowY + 2).lineTo(M + W, rowY + 2)
      .strokeColor(C.border).lineWidth(0.5).stroke();
 
-  // 超出提示
-  if (rows.length > MAX_ROWS) {
-    doc.fillColor(C.muted).fontSize(9)
-       .text(`...仅显示前 ${MAX_ROWS} 条, 共 ${rows.length} 条. 完整明细请使用 XLSX 导出.`,
-             M, tableBottom + 10, { width: W, align: 'center' });
+  // ─── ④ 页脚 (每页都画, 含页码) ───────────────────────────
+  const range = doc.bufferedPageRange();
+  const totalPages = range.count;
+  for (let i = 0; i < totalPages; i++) {
+    doc.switchToPage(range.start + i);
+    doc.fillColor(C.muted).fontSize(8)
+       .text(`BookNook 暖书阁 · 数据库引论 中期实验 2026  ·  第 ${i + 1} 页 / 共 ${totalPages} 页`,
+             M, PAGE_H - 38, { width: W, align: 'center' });
+    doc.fillColor('#c7b89a').fontSize(7)
+       .text('本报表由系统自动生成 · 仅供内部审计使用',
+             M, PAGE_H - 24, { width: W, align: 'center' });
   }
-
-  // ─── ④ 页脚 ─────────────────────────────────────────────
-  doc.fillColor(C.muted).fontSize(8)
-     .text('BookNook 暖书阁 · 数据库引论 中期实验 2026',
-           M, PAGE_H - 38, { width: W, align: 'center' });
-  doc.fillColor('#c7b89a').fontSize(7)
-     .text('本报表由系统自动生成 · 仅供内部审计使用',
-           M, PAGE_H - 24, { width: W, align: 'center' });
 
   doc.end();
 });
