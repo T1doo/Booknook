@@ -82,7 +82,9 @@ Write-Section "1. 重建数据库 $DbName"
 $baseArgs = @('-h', $PgHost, '-p', "$PgPort", '-U', $PgUser, '-d', 'postgres',
               '-v', 'ON_ERROR_STOP=1', '-q')
 
-& $psql @baseArgs -c "DROP DATABASE IF EXISTS $DbName;"
+# WITH (FORCE) 自动 kick 掉后端 Prisma 等活跃连接 (PG 13+),
+# 这样无需先停后端就能 reset, 演示前体验更顺畅
+& $psql @baseArgs -c "DROP DATABASE IF EXISTS $DbName WITH (FORCE);"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[ERROR] DROP DATABASE 失败, 请检查密码与连接" -ForegroundColor Red
     exit 1
