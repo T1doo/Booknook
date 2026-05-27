@@ -46,8 +46,11 @@ router.patch('/threshold/:bookId', validate('body', thresholdSchema), async (req
     where: { id: bookId },
     data:  { low_stock_threshold: (req.body as z.infer<typeof thresholdSchema>).low_stock_threshold },
   });
-  // 重新评估: 用模板字面量参数化, 杜绝 SQL 注入风险 (C7)
-  await prisma.$queryRaw(Prisma.sql`SELECT fn_books_low_stock_check(${bookId})`);
+  // 重新评估: 用 $executeRaw 而非 $queryRaw, 因为函数返回 VOID 没有结果集.
+  // 用 Prisma.sql 模板字面量参数化, 杜绝 SQL 注入风险 (C7).
+  // 注: 数据库的 trg_books_after_update_check_alert 触发器也会自动评估,
+  //     这里的显式调用是应用层防御性兜底 (重复调用幂等无害).
+  await prisma.$executeRaw(Prisma.sql`SELECT fn_books_low_stock_check(${bookId})`);
   ok(res, updated, '已更新阈值');
 });
 
