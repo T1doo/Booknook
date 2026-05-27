@@ -74,6 +74,7 @@
 | `trg_users_updated_at`         | UPDATE users         | 自动更新 `updated_at` |
 | `trg_books_updated_at`         | UPDATE books         | 同上 |
 | `trg_po_updated_at`            | UPDATE purchase_orders | 同上 |
-| `trg_sale_items_after_insert`  | INSERT sale_order_items | 扣库存 + 库存预警检查 |
-| `trg_sale_orders_after_insert` | INSERT sale_orders     | 写入 income 流水 |
-| `trg_purchase_status_change`   | UPDATE purchase_orders.status | 付款写支出流水 / 入库更新 books |
+| `trg_sale_items_after_insert`  | INSERT sale_order_items (FOR EACH ROW) | 扣库存 + 触发库存预警评估 |
+| `trg_sale_items_after_insert_stmt` | INSERT sale_order_items (FOR EACH STATEMENT) | 按 `SUM(items.subtotal)` 写入 income 流水 (金额由 DB 强制等于明细 SUM) |
+| `trg_purchase_status_change`   | UPDATE purchase_orders.status | 付款写支出流水 / 入库更新 books / 非法转移 RAISE |
+| `trg_books_after_update_check_alert` | UPDATE books.stock 或 .low_stock_threshold | 统一兜底: 任何路径修改库存 / 阈值都自动评估预警 |
