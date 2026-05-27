@@ -227,12 +227,20 @@ function UserDialog({
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label htmlFor="u-username">用户名</Label>
-            <Input id="u-username" value={username} onChange={(e) => setUsername(e.target.value)} disabled={!isCreate} />
+            <Label htmlFor="u-username">用户名 <span className="text-muted-foreground font-normal">(登录账号)</span></Label>
+            <Input id="u-username" value={username} onChange={(e) => setUsername(e.target.value)}
+                   disabled={!isCreate} placeholder="admin1" />
+            {isCreate && (
+              <p className="text-xs text-muted-foreground">3-32 位字母数字下划线, 必须字母开头. 中文姓名请填到下方「真实姓名」</p>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="u-pwd">{isCreate ? '初始密码' : '重置密码 (留空不改)'}</Label>
-            <Input id="u-pwd" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <Input id="u-pwd" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                   placeholder={isCreate ? '至少 6 位' : ''} />
+            {isCreate && (
+              <p className="text-xs text-muted-foreground">至少 6 位, 任意字符. 后端用 MD5+salt 加密保存</p>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="u-name">真实姓名</Label>
