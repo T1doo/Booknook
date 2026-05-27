@@ -105,7 +105,7 @@ function LogsPageInner() {
               </Select>
             </div>
             <div />
-            <Button variant="outline" onClick={() => { setAction(''); setResource(''); setPage(1); }}>重置</Button>
+            <Button variant="outline" onClick={() => { setAction(''); setResource(''); setPage(1); }}>清空筛选</Button>
           </div>
         </CardContent>
       </Card>
