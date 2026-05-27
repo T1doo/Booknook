@@ -194,7 +194,7 @@ tags:
 ### `POST /purchases/:id/receive`
 状态 `paid → received`,触发器入库 (新书 INSERT;已有 +stock)。
 
-**可选 Body**:
+**Body** (`retail_prices` 字段可选):
 ```json
 {
   "retail_prices": [
@@ -202,7 +202,17 @@ tags:
   ]
 }
 ```
-为新书指定零售价 (未指定则用 `purchase_price * 1.5`)。
+
+**触发器对 `retail_price` 的处理** (`COALESCE` 语义):
+
+| 明细类型 | `retail_prices` 含本明细? | books.retail_price 最终值 |
+|---|---|---|
+| 新书 (book_id IS NULL) | 是 | 操作员指定的值 |
+| 新书 (book_id IS NULL) | 否 | `purchase_price * 1.5` (fallback) |
+| 老书 (book_id 已知) | 是 | 操作员指定的值 (覆盖原值) |
+| 老书 (book_id 已知) | 否 | 保留 books 表原值 (不变) |
+
+前端 UI 约定: 新书必须传 retail_price (调用前对话框强制填写), 老书默认不传 (沿用现价)。
 
 ---
 
