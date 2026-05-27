@@ -230,12 +230,22 @@ router.get('/finance.pdf', validate('query', dateRangeSchema), async (req, res) 
   const doc = new PDFDocument({ size: 'A4', margins: { top: 50, bottom: 50, left: 50, right: 50 } });
   doc.pipe(res);
 
-  // 中文字体: 尝试加载内置 Noto Serif SC,失败则使用默认 (英文 + 数字仍可正常呈现)
-  const fontPath = path.join(FONT_DIR, 'NotoSerifSC-Regular.ttf');
-  if (fs.existsSync(fontPath)) {
+  // 中文字体: 按优先级扫描多个候选路径, 找到第一个就用.
+  // 项目自带字体优先, 没有则 fallback 到系统自带的常见中文 TTF.
+  // 全部找不到才警告并使用 PDFKit 默认字体 Helvetica (中文显示为乱码).
+  const fontCandidates = [
+    path.join(FONT_DIR, 'NotoSerifSC-Regular.ttf'),  // 项目自带 (跨平台最稳, 可选 commit)
+    'C:\\Windows\\Fonts\\simhei.ttf',                 // Windows 黑体
+    'C:\\Windows\\Fonts\\simkai.ttf',                 // Windows 楷体
+    'C:\\Windows\\Fonts\\simfang.ttf',                // Windows 仿宋
+    '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttf',   // Linux 文泉驿黑体
+    '/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttf', // Linux Noto Serif CJK
+  ];
+  const fontPath = fontCandidates.find((p) => fs.existsSync(p));
+  if (fontPath) {
     doc.font(fontPath);
   } else {
-    logger.warn('中文字体缺失,PDF 中的中文可能为方框');
+    logger.warn('找不到任何中文字体, PDF 中文会乱码. 请放 NotoSerifSC-Regular.ttf 到 backend/assets/fonts/');
   }
 
   doc.fontSize(20).text('BookNook · 财务报表', { align: 'center' });
