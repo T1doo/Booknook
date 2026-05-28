@@ -10,7 +10,7 @@
 ```powershell
 # 窗口 A · 数据库（一次性，看到 [DONE] 即可关闭此窗口）
 cd E:\Github\Booknook
-$env:PGPASSWORD = "你的postgres密码"
+$env:PGPASSWORD = "060425"
 .\scripts\00-init-db.ps1
 
 # 窗口 B · 后端（保持开着，等到 [OK] ... ready on http://localhost:4000）
